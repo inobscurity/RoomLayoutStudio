@@ -176,6 +176,16 @@ details.presets summary::-webkit-details-marker { display: none; }
 .op-win { stroke: var(--sel); }
 .op.on .op-hit { fill: var(--sel-soft); stroke: var(--sel); }
 .op-hit { fill: transparent; cursor: move; }
+.item.up rect.body { stroke-opacity: 1; }
+.tv-screen { stroke: var(--sel); stroke-linecap: round; }
+.tv-lbl { font-weight: 500; }
+.view-line { stroke: var(--sel); fill: none; pointer-events: none; }
+.view-line.bad { stroke: var(--warn); }
+.view-dot { fill: var(--sel); pointer-events: none; }
+.view-dot.bad { fill: var(--warn); }
+.view-box { fill: var(--sel); pointer-events: none; }
+.view-box.bad { fill: var(--warn); }
+.view-txt { fill: var(--paper); font-family: var(--font-mono); font-weight: 500; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 
 /* Photo measuring */
 #wiz { position: fixed; inset: 0; z-index: 30; background: #0d1112; color: #e8eeec; display: grid; grid-template-rows: auto 1fr auto; }
@@ -415,7 +425,7 @@ const unitHint = () => S.units === "metric" ? "cm" : "ft/in";
 /* ---------- presets & sample ---------- */
 const PRESETS = [
   ["Sofa, 3-seat", 210, 92, 85], ["Loveseat", 150, 90, 85], ["Armchair", 85, 85, 90], ["Coffee table", 110, 60, 45],
-  ["Side table", 50, 50, 55], ["TV stand", 160, 40, 50], ["Rug", 200, 290, 1, true], ["Bookshelf", 80, 30, 180],
+  ["Side table", 50, 50, 55], ["TV stand", 160, 40, 50], ["TV, 55″", 124, 25, 75, false, { tv: { size: 55 } }], ["TV, 65″", 147, 25, 87, false, { tv: { size: 65 } }], ["Rug", 200, 290, 1, true], ["Bookshelf", 80, 30, 180],
   ["Double bed", 140, 200, 50], ["Queen bed", 152, 203, 50], ["King bed", 193, 203, 50], ["Single bed", 90, 200, 50],
   ["Nightstand", 50, 40, 55], ["Wardrobe", 100, 60, 200], ["Dresser", 120, 50, 80], ["Desk", 140, 70, 75],
   ["Desk chair", 60, 60, 100], ["Dining table", 160, 90, 75], ["Dining chair", 45, 50, 90], ["Floor lamp", 35, 35, 160], ["Plant", 45, 45, 120],
@@ -432,18 +442,19 @@ const REFS = [
 function sampleProject() {
   const it = (name, w, d, h, color, floor) => ({ id: uid(), name, w, d, h, color, floor: !!floor });
   const sofa = it("Sofa", 210, 92, 85, 0), table = it("Coffee table", 110, 60, 45, 1), chair = it("Armchair", 85, 85, 90, 2),
-    tv = it("TV stand", 160, 40, 50, 4), rug = it("Rug", 200, 290, 1, 3, true), shelf = it("Bookshelf", 80, 30, 180, 5), lamp = it("Floor lamp", 35, 35, 160, 1);
+    stand = it("TV stand", 160, 40, 50, 4), tv = Object.assign(it("TV", 147, 25, 87, 0), { on: null, tv: { size: 65 } }), rug = it("Rug", 200, 290, 1, 3, true), shelf = it("Bookshelf", 80, 30, 180, 5), lamp = it("Floor lamp", 35, 35, 160, 1);
   const A = {}, B = {};
   A[sofa.id] = { x: 47, y: 190, r: 90 }; A[table.id] = { x: 180, y: 190, r: 90 }; A[chair.id] = { x: 215, y: 323, r: 0 };
-  A[tv.id] = { x: 440, y: 190, r: 90 }; A[rug.id] = { x: 200, y: 190, r: 90 }; A[shelf.id] = { x: 380, y: 16, r: 0 }; A[lamp.id] = { x: 30, y: 40, r: 0 };
+  tv.on = stand.id; A[tv.id] = { x: 0, y: -7.5, r: 0 }; B[tv.id] = { x: 0, y: -7.5, r: 0 };
+  A[stand.id] = { x: 440, y: 190, r: 90 }; A[rug.id] = { x: 200, y: 190, r: 90 }; A[shelf.id] = { x: 380, y: 16, r: 0 }; A[lamp.id] = { x: 30, y: 40, r: 0 };
   B[sofa.id] = { x: 230, y: 333, r: 0 }; B[table.id] = { x: 230, y: 220, r: 0 }; B[chair.id] = { x: 400, y: 230, r: 270 };
-  B[tv.id] = { x: 21, y: 210, r: 90 }; B[rug.id] = { x: 230, y: 240, r: 0 }; B[shelf.id] = { x: 444, y: 70, r: 90 }; B[lamp.id] = { x: 422, y: 345, r: 0 };
+  B[stand.id] = { x: 21, y: 210, r: 270 }; B[rug.id] = { x: 230, y: 240, r: 0 }; B[shelf.id] = { x: 444, y: 70, r: 90 }; B[lamp.id] = { x: 422, y: 345, r: 0 };
   const la = { id: uid(), name: "As it is now", pos: A }, lb = { id: uid(), name: "Sofa facing the window", pos: B };
   return {
     version: 1, units: "metric", isExample: true, distTo: "walls", snap: true,
     room: { pts: [{ x: 0, y: 0 }, { x: 460, y: 0 }, { x: 460, y: 380 }, { x: 0, y: 380 }], height: 250 },
     openings: [{ id: uid(), type: "window", wall: 0, t: 230, w: 160 }, { id: uid(), type: "door", wall: 2, t: 395, w: 85, flip: 0 }],
-    items: [rug, sofa, table, chair, tv, shelf, lamp],
+    items: [rug, sofa, table, chair, stand, tv, shelf, lamp],
     layouts: [la, lb], current: la.id, photos: [],
   };
 }
@@ -482,10 +493,88 @@ function validateSel() {
   else if (sel.type === "op" && !S.openings.find(o => o.id === sel.id)) sel = null;
 }
 const layout = () => S.layouts.find(l => l.id === S.current) || S.layouts[0];
-function posOf(id) {
+const itemById = id => S.items.find(i => i.id === id);
+/* Positions are stored per layout. A piece standing on another piece stores its position
+   relative to that piece (in the base's own frame), so it moves and turns with it. */
+function rawPos(id) {
   const L = layout();
-  if (!L.pos[id]) L.pos[id] = { ...roomCenter(), r: 0 };
+  if (!L.pos[id]) L.pos[id] = itemById(id)?.on ? { x: 0, y: 0, r: 0 } : { ...roomCenter(), r: 0 };
   return L.pos[id];
+}
+function baseOf(it) { const b = it && it.on ? itemById(it.on) : null; if (it && it.on && !b) it.on = null; return b; }
+/* world position {x, y, r} of a piece; a copy, so change it with setPos */
+function posOf(id, depth = 0) {
+  const it = itemById(id), p = rawPos(id), b = baseOf(it);
+  if (!b || depth > 8) return { x: p.x, y: p.y, r: p.r };
+  const bp = posOf(b.id, depth + 1), o = V.rot(p, bp.r * DEG);
+  return { x: bp.x + o.x, y: bp.y + o.y, r: normDeg(bp.r + p.r) };
+}
+function setPos(id, w) {
+  const it = itemById(id), p = rawPos(id), b = baseOf(it);
+  if (!b) { p.x = w.x; p.y = w.y; p.r = normDeg(w.r); return; }
+  const bp = posOf(b.id), o = V.rot(V.sub(w, bp), -bp.r * DEG);
+  p.x = Math.round(o.x * 2) / 2; p.y = Math.round(o.y * 2) / 2; p.r = normDeg(w.r - bp.r);
+}
+function inLayout(L, fn) { const cur = S.current; S.current = L.id; try { return fn(); } finally { S.current = cur; } }
+const childrenOf = id => S.items.filter(i => i.on === id);
+function descendants(id) { const out = []; const walk = x => childrenOf(x).forEach(c => { out.push(c.id); walk(c.id); }); walk(id); return out; }
+const level = (it, d = 0) => { const b = baseOf(it); return b && d < 8 ? 1 + level(b, d + 1) : 0; };
+const rootOf = it => { let r = it, n = 0; while (baseOf(r) && n++ < 8) r = baseOf(r); return r; };
+const topOf = (it, d = 0) => { const b = baseOf(it); return (b && d < 8 ? topOf(b, d + 1) : 0) + (it.h || 0); };
+const canStackOn = (it, b) => !!b && b.id !== it.id && !b.floor && !descendants(it.id).includes(b.id);
+/* Put a piece on top of another, in every layout. In the layout on screen it keeps its spot if it's
+   already over the base; elsewhere it goes to the back of the base, facing into the room. */
+function stackOn(it, b) {
+  const cur = S.current;
+  for (const L of S.layouts) inLayout(L, () => {
+    const w = posOf(it.id), bp = posOf(b.id), loc = V.rot(V.sub(w, bp), -bp.r * DEG);
+    const inside = !it.on && Math.abs(loc.x) < b.w / 2 && Math.abs(loc.y) < b.d / 2;
+    it.on = b.id;
+    if (inside && L.id === cur) { setPos(it.id, w); return; }
+    const { v } = axes(bp.r), faceIn = V.dot(v, V.sub(roomCenter(), bp)) >= 0;
+    const back = it.d < b.d ? (b.d - it.d) / 2 : 0;
+    L.pos[it.id] = { x: 0, y: faceIn ? -back : back, r: faceIn ? 0 : 180 };
+  });
+}
+/* Take a piece off its base. It keeps its spot in the layout on screen when keepHere is set;
+   elsewhere it is put on the floor just in front of where it stood. */
+function unstack(it, keepHere) {
+  const b = baseOf(it); if (!b) return;
+  const cur = S.current, ws = S.layouts.map(L => inLayout(L, () => ({ L, w: posOf(it.id) })));
+  it.on = null;
+  for (const { L, w } of ws) {
+    let n = w;
+    if (!(keepHere && L.id === cur)) { const { v } = axes(w.r); n = { ...V.add(w, V.mul(v, (b.d + it.d) / 2 + 15)), r: w.r }; }
+    L.pos[it.id] = { x: Math.round(n.x), y: Math.round(n.y), r: n.r };
+  }
+}
+
+/* ---------- TVs and viewing distance ---------- */
+const TV_SIZES = [32, 40, 43, 50, 55, 65, 75, 77, 83, 85, 98];
+const tvDims = inch => ({ w: Math.round(inch * 2.54 * 0.8716 + 3), h: Math.round(inch * 2.54 * 0.4903 + 6) }); // 16:9 panel, thin bezel
+const tvSizeFromWidth = w => clamp(Math.round((w - 3) / (2.54 * 0.8716)), 19, 120);
+const isTVName = n => /\b(tv|television)\b/i.test(n) && !/(stand|cabinet|unit|console|table|bench|mount|bracket|chair|shelf)/i.test(n);
+const SEAT_RE = /(sofa|couch|loveseat|love seat|sectional|armchair|recliner|chair|seat|bed|futon|ottoman|bean ?bag)/i, NOT_SEAT = /(desk|dining|office|bar stool|high chair)/i;
+const isSeat = it => !it.floor && !it.tv && (it.seat !== undefined ? it.seat : SEAT_RE.test(it.name) && !NOT_SEAT.test(it.name));
+/* Rule of thumb for HD/4K screens: 1.0-1.6 x the diagonal fills your view (ideal),
+   up to 2.5 x is comfortable, beyond that detail is lost. */
+function viewVerdict(dist, inch) {
+  const r = dist / (inch * 2.54);
+  if (r < 1) return { ok: false, txt: "too close" };
+  if (r <= 1.6) return { ok: true, txt: "ideal" };
+  if (r <= 2.5) return { ok: true, txt: "comfortable" };
+  return { ok: false, txt: "far for this size" };
+}
+const viewRange = inch => { const d = inch * 2.54; return `ideal ${fmt(d)}–${fmt(1.6 * d)}, comfortable up to ${fmt(2.5 * d)}`; };
+function tvFront(it) { const p = posOf(it.id), { v } = axes(p.r); return { p: V.add(p, V.mul(v, it.d / 2)), dir: v }; }
+/* seats in front of a TV (within 60° of where it faces), most central first */
+function viewings(tv) {
+  if (!tv.tv || !(tv.tv.size > 0)) return [];
+  const { p: F, dir } = tvFront(tv);
+  return S.items.filter(s => s.id !== tv.id && isSeat(s)).map(s => {
+    const c = posOf(s.id), vec = V.sub(c, F), dist = V.len(vec), ang = Math.acos(clamp(V.dot(V.norm(vec), dir), -1, 1)) / DEG;
+    return { tv, seat: s, from: F, to: c, dist, ang, verdict: viewVerdict(dist, tv.tv.size) };
+  }).filter(x => x.ang < 60 && x.dist > 20).sort((a, b) => a.ang - b.ang || a.dist - b.dist);
 }
 function roomCenter() { const b = roomBox(); return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }; }
 function roomBox() { const p = S.room.pts; return { x0: Math.min(...p.map(q => q.x)), y0: Math.min(...p.map(q => q.y)), x1: Math.max(...p.map(q => q.x)), y1: Math.max(...p.map(q => q.y)) }; }
@@ -515,11 +604,17 @@ function clampOp(o) { const w = wallInfo(o.wall); o.w = Math.min(o.w, w.L); o.t 
 function itemPoly(it, shrink = 0) { const p = posOf(it.id); return rectCorners(p, it.w, it.d, p.r, shrink); }
 function problems() {
   const out = {};
-  const solid = S.items.filter(i => !i.floor);
+  const solid = S.items.filter(i => !i.floor && !i.on);
   const polys = new Map(solid.map(i => [i.id, itemPoly(i, 0.5)]));
   const add = (id, msg) => (out[id] = out[id] || []).push(msg);
   for (let a = 0; a < solid.length; a++) for (let b = a + 1; b < solid.length; b++) {
     if (rectsOverlap(polys.get(solid[a].id), polys.get(solid[b].id))) { add(solid[a].id, "Overlaps " + solid[b].name); add(solid[b].id, "Overlaps " + solid[a].name); }
+  }
+  for (const it of S.items) {
+    const b = baseOf(it); if (!b) continue;
+    const bp = posOf(b.id); let over = 0;
+    for (const c of itemPoly(it)) { const l = V.rot(V.sub(c, bp), -bp.r * DEG); over = Math.max(over, Math.abs(l.x) - b.w / 2, Math.abs(l.y) - b.d / 2); }
+    if (over > 1) add(it.id, `Sticks out ${fmt(over)} past the ${b.name}`);
   }
   const walls = edges(S.room.pts);
   for (const it of S.items) {
@@ -532,7 +627,7 @@ function problems() {
 function clearances(it) {
   const p = posOf(it.id), { u, v } = axes(p.r), hw = it.w / 2, hd = it.d / 2;
   const segs = edges(S.room.pts).map(([a, b]) => ({ a, b, kind: "wall" }));
-  if (S.distTo === "all") for (const o of S.items) if (o.id !== it.id && !o.floor && !it.floor) {
+  if (S.distTo === "all") for (const o of S.items) if (o.id !== it.id && !o.floor && !it.floor && !o.on && o.id !== rootOf(it).id) {
     const P = itemPoly(o); P.forEach((a, i) => segs.push({ a, b: P[(i + 1) % 4], kind: "item", name: o.name }));
   }
   const sides = [
@@ -550,6 +645,25 @@ function clearances(it) {
     const side = Math.abs(s.n.x) > Math.abs(s.n.y) ? (s.n.x > 0 ? "Right" : "Left") : (s.n.y > 0 ? "Bottom" : "Top");
     return { side, ...best };
   }).sort((a, b) => ["Top", "Bottom", "Left", "Right"].indexOf(a.side) - ["Top", "Bottom", "Left", "Right"].indexOf(b.side));
+}
+function overlapsWith(it) {
+  if (it.floor || it.on) return [];
+  const P = itemPoly(it, 0.5);
+  return S.items.filter(o => o.id !== it.id && !o.floor && !o.on && rectsOverlap(P, itemPoly(o, 0.5)));
+}
+/* while dragging a piece on its base: centre it, or line its edge up with the base's edge */
+function snapOnBase(it, w, tol) {
+  const b = baseOf(it); if (!b || !S.snap) return;
+  const bp = posOf(b.id), loc = V.rot(V.sub(w, bp), -bp.r * DEG), rr = normDeg(w.r - bp.r), q = Math.round(rr / 90) % 4;
+  if (Math.abs(normDeg(rr - q * 90 + 180) - 180) > 1) return;
+  const ex = q % 2 ? it.d / 2 : it.w / 2, ey = q % 2 ? it.w / 2 : it.d / 2;
+  if (Math.abs(loc.x) < tol) loc.x = 0;
+  else if (Math.abs(loc.x - ex + b.w / 2) < tol) loc.x = -b.w / 2 + ex;
+  else if (Math.abs(loc.x + ex - b.w / 2) < tol) loc.x = b.w / 2 - ex;
+  if (Math.abs(loc.y - ey + b.d / 2) < tol) loc.y = -b.d / 2 + ey;
+  else if (Math.abs(loc.y + ey - b.d / 2) < tol) loc.y = b.d / 2 - ey;
+  else if (Math.abs(loc.y) < tol) loc.y = 0;
+  const o = V.rot(loc, bp.r * DEG); w.x = bp.x + o.x; w.y = bp.y + o.y;
 }
 function snapItem(it, p, tol) {
   if (!S.snap) return;
@@ -644,22 +758,36 @@ function planMarkup(k) {
   });
   // furniture
   const probs = problems();
-  const order = [...S.items].sort((a, b) => (b.floor ? 1 : 0) - (a.floor ? 1 : 0) || (sel && a.id === sel.id ? 1 : 0) - (sel && b.id === sel.id ? 1 : 0));
+  const lv = it => it.floor ? -1 : level(it);
+  const order = [...S.items].sort((a, b) => lv(a) - lv(b) || (sel && a.id === sel.id ? 1 : 0) - (sel && b.id === sel.id ? 1 : 0));
   for (const it of order) {
     const p = posOf(it.id), on = sel && sel.type === "item" && sel.id === it.id;
-    const cls = ["item", it.floor ? "floorish" : "", probs[it.id] ? "bad" : "", on ? "on" : ""].join(" ");
+    const cls = ["item", it.floor ? "floorish" : "", it.on ? "up" : "", it.tv ? "tv" : "", probs[it.id] ? "bad" : "", on ? "on" : ""].join(" ");
     const long = it.d > it.w * 1.25, tr = textRot(p.r, long), Ls = (long ? it.d : it.w) / k, Ss = (long ? it.w : it.d) / k;
     const nfs = Math.min(12, Math.max(9, Ss / 4)) * k;
     let txt = "";
     const fitsName = it.name.length * nfs * 0.58 <= (long ? it.d : it.w) * 1.02;
-    if (Ls > 34 && Ss > 14 && fitsName) {
+    if (Ls > 34 && Ss > 14 && fitsName && !it.tv && !childrenOf(it.id).length) {
       const showDim = Ss > 30 && (fmt(it.w).length + fmt(it.d).length + 3) * nfs * 0.85 * 0.62 <= (long ? it.d : it.w);
       txt += `<text class="iname" font-size="${f(nfs)}" y="${showDim ? f(-nfs * 0.55) : 0}">${esc(it.name)}</text>`;
       if (showDim) txt += `<text class="idim" font-size="${f(nfs * 0.85)}" y="${f(nfs * 0.7)}">${esc(fmt(it.w))} × ${esc(fmt(it.d))}</text>`;
     }
     h += `<g class="${cls}" transform="translate(${f(p.x)} ${f(p.y)}) rotate(${f(p.r)})">` +
-      `<rect class="body" data-hit="item" data-id="${it.id}" x="${f(-it.w / 2)}" y="${f(-it.d / 2)}" width="${f(it.w)}" height="${f(it.d)}" rx="${Math.min(3, it.w / 6, it.d / 6)}" stroke-width="${(on ? 2.2 : 1.2) * k}" style="fill:var(--f${it.color % 6});fill-opacity:${it.floor ? 0.55 : 0.95}"/>` +
+      `<rect class="body" data-hit="item" data-id="${it.id}" x="${f(-it.w / 2)}" y="${f(-it.d / 2)}" width="${f(it.w)}" height="${f(it.d)}" rx="${Math.min(3, it.w / 6, it.d / 6)}" stroke-width="${(on ? 2.2 : it.on ? 1.6 : 1.2) * k}" style="fill:${it.tv ? "var(--wall)" : `var(--f${it.color % 6})`};fill-opacity:${it.floor ? 0.55 : it.tv ? 1 : 0.95}"/>` +
+      (it.tv ? `<line class="tv-screen" stroke-width="${2.5 * k}" x1="${f(-it.w / 2 + 2)}" y1="${f(it.d / 2)}" x2="${f(it.w / 2 - 2)}" y2="${f(it.d / 2)}" pointer-events="none"/>` : "") +
       `<g transform="rotate(${tr})">${txt}</g></g>`;
+    if (it.tv && it.w / k > 30) {   // TV label just in front of the screen, kept upright
+      const fr = tvFront(it), lp = V.add(fr.p, V.mul(fr.dir, 9 * k)), ur = textRot(p.r, false) + p.r;
+      const short = (it.tv.size ? it.tv.size + "″ " : "") + it.name, b = baseOf(it), long = b ? `${short} on ${b.name}` : short;
+      const lbl = long.length * 6.2 * k <= Math.max(it.w, b ? b.w : 0) ? long : short;
+      h += `<text class="idim tv-lbl" font-size="${f(10 * k)}" transform="translate(${f(lp.x)} ${f(lp.y)}) rotate(${f(ur)})">${esc(lbl)}</text>`;
+    }
+  }
+  // TV viewing distance: the most central seat for each TV; every seat in front when the TV is selected
+  if (S.showView !== false) for (const tv of S.items.filter(i => i.tv)) {
+    const list = viewings(tv), selTv = sel && sel.id === tv.id;
+    const show = selTv ? list.slice(0, 5) : list.filter((x, i) => i === 0 || (sel && sel.id === x.seat.id));
+    for (const x of show) h += viewLine(x, k);
   }
   // selection extras
   if (sel && sel.type === "item") {
@@ -681,6 +809,19 @@ function planMarkup(k) {
     pts.forEach((p, i) => { h += `<circle class="vtx" data-hit="v" data-i="${i}" cx="${f(p.x)}" cy="${f(p.y)}" r="${10 * k}" stroke-width="${2.5 * k}"/>`; });
   }
   return h;
+}
+function viewLine(x, k) {
+  const f = n => +n.toFixed(2), bad = !x.verdict.ok || x.ang > 30 ? " bad" : "";
+  const txt = `${fmt(x.dist)} · ${x.verdict.txt}${x.ang > 30 ? " · off to the side" : ""}`;
+  const tw = (txt.length * 6.3 + 12) * k, th = 16 * k, dir = V.norm(V.sub(x.to, x.from));
+  // near the TV end and just off the line, so it stays clear of the yellow wall-gap labels
+  let n = { x: -dir.y, y: dir.x }; if (n.y > 0.01 || (Math.abs(n.y) <= 0.01 && n.x < 0)) n = V.mul(n, -1);
+  const along = Math.min(x.dist * 0.5, Math.max(x.dist * 0.22, tw / 2 + 14 * k));
+  const m = V.add(V.add(x.from, V.mul(dir, along)), V.mul(n, th * 0.8 + Math.abs(n.x) * tw * 0.5));
+  return `<line class="view-line${bad}" stroke-width="${1.6 * k}" stroke-dasharray="${6 * k} ${4 * k}" x1="${f(x.from.x)}" y1="${f(x.from.y)}" x2="${f(x.to.x)}" y2="${f(x.to.y)}"/>` +
+    `<circle class="view-dot${bad}" cx="${f(x.to.x)}" cy="${f(x.to.y)}" r="${3.5 * k}"/><circle class="view-dot${bad}" cx="${f(x.from.x)}" cy="${f(x.from.y)}" r="${2.5 * k}"/>` +
+    `<rect class="view-box${bad}" x="${f(m.x - tw / 2)}" y="${f(m.y - th / 2)}" width="${f(tw)}" height="${f(th)}" rx="${8 * k}"/>` +
+    `<text class="view-txt" font-size="${f(10.5 * k)}" x="${f(m.x)}" y="${f(m.y)}">${esc(txt)}</text>`;
 }
 function tapeLine(a, b, d, k) {
   const f = n => +n.toFixed(2), m = V.mid(a, b), dir = V.norm(V.sub(b, a)), n = { x: -dir.y, y: dir.x }, t = 5 * k;
@@ -754,15 +895,17 @@ svg.addEventListener("pointermove", e => {
     drag.moved = true; if (!drag.committed) commit();
   }
   if (drag.type === "item") {
-    const it = S.items.find(i => i.id === drag.id), pos = posOf(drag.id);
+    const it = itemById(drag.id), pos = posOf(drag.id);
     pos.x = Math.round((p.x + drag.off.x) * 2) / 2; pos.y = Math.round((p.y + drag.off.y) * 2) / 2;
-    snapItem(it, pos, 10 * k);
+    if (baseOf(it)) snapOnBase(it, pos, 6 * k); else snapItem(it, pos, 10 * k);
+    setPos(drag.id, pos);
   } else if (drag.type === "rot") {
     const pos = posOf(drag.id);
     let r = drag.r0 + Math.atan2(p.y - pos.y, p.x - pos.x) / DEG - drag.a0;
     const near = Math.round(r / 15) * 15;
     if (Math.abs(r - near) < 4) r = near;
     pos.r = Math.round(normDeg(r) * 10) / 10;
+    setPos(drag.id, pos);
   } else if (drag.type === "op") {
     const o = S.openings.find(q => q.id === drag.id), n = nearestWall(p);
     o.wall = n.i; o.t = Math.round(n.t); clampOp(o);
@@ -777,6 +920,13 @@ function endPtr(e) {
   if (!drag) return;
   if (drag.type === "pinch") { if (ptrs.size === 0) drag = null; return; }
   if (drag.type === "pan" && !drag.moved && sel) { sel = null; renderPlan(); renderPanel(); }
+  if (drag.moved && drag.type === "item") {   // dragged off its base: it now stands on the floor
+    const it = itemById(drag.id), b = baseOf(it);
+    if (b) {
+      const bp = posOf(b.id), loc = V.rot(V.sub(posOf(it.id), bp), -bp.r * DEG);
+      if (Math.abs(loc.x) > b.w / 2 || Math.abs(loc.y) > b.d / 2) { unstack(it, true); renderPlan(); toast(`${it.name} now stands on the floor`); }
+    }
+  }
   if (drag.moved && drag.type !== "pan") { save(); renderPanel(); }
   drag = null;
 }
@@ -801,14 +951,15 @@ document.addEventListener("keydown", e => {
   if (inField || !sel || sel.type !== "item") return;
   const pos = posOf(sel.id), st = e.shiftKey ? 10 : 1;
   const moves = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] };
-  if (moves[e.key]) { e.preventDefault(); commit(); pos.x += moves[e.key][0]; pos.y += moves[e.key][1]; renderPlan(); renderPanelLive(); save(); }
+  if (moves[e.key]) { e.preventDefault(); commit(); pos.x += moves[e.key][0]; pos.y += moves[e.key][1]; setPos(sel.id, pos); renderPlan(); renderPanelLive(); save(); }
   else if (e.key === "r" || e.key === "R") { rotate90(); }
   else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeItem(sel.id); }
 });
 function selectItem(id) { sel = { type: "item", id }; tab = "furniture"; confirmKey = null; renderPanel(); renderPlan(); expandSheet(); }
-function rotate90() { if (!sel || sel.type !== "item") return; commit(); const p = posOf(sel.id); p.r = normDeg(Math.round(p.r / 90) * 90 + 90); renderPlan(); renderPanel(); save(); }
+function rotate90() { if (!sel || sel.type !== "item") return; commit(); const p = posOf(sel.id); p.r = normDeg(Math.round(p.r / 90) * 90 + 90); setPos(sel.id, p); renderPlan(); renderPanel(); save(); }
 function removeItem(id) {
-  commit(); S.items = S.items.filter(i => i.id !== id); S.layouts.forEach(l => delete l.pos[id]);
+  commit(); childrenOf(id).forEach(c => unstack(c, true));
+  S.items = S.items.filter(i => i.id !== id); S.layouts.forEach(l => delete l.pos[id]);
   sel = null; renderAll(); save(); toast("Removed. Undo brings it back.");
 }
 
@@ -843,10 +994,18 @@ function panelFurniture() {
         <label class="f" style="flex-direction:row;align-items:center;gap:6px">Angle<input class="in num" id="f-r" data-f="r" value="${Math.round(p.r * 10) / 10}" style="width:72px" inputmode="decimal">°</label>
       </div>
       ${(probs[it.id] || []).map(m => `<div class="warnline">● ${esc(m)}</div>`).join("")}
+      ${overlapsWith(it).filter(o => canStackOn(it, o) && it.w * it.d < o.w * o.d).map(o => `<button class="btn sm" data-act="stack-on" data-id="${o.id}">Put it on top of the ${esc(o.name)}</button>`).join("")}
+      ${stackSection(it)}
+      ${it.tv ? tvSection(it) : ""}
+      ${isSeat(it) ? seatSection(it) : ""}
       <div class="sec"><h3>Gap to ${S.distTo === "all" ? "walls and furniture" : "walls"}, as seen on the plan</h3>
         <div class="dists">${cl.map(c => `<div class="dist"><span>${c.side}${c.kind === "item" ? ` <span class="muted">(${esc(c.name)})</span>` : ""}</span><b>${isFinite(c.dist) ? esc(fmt(c.dist)) : "–"}</b></div>`).join("")}</div>
       </div>
-      <label class="toggle"><input type="checkbox" id="f-floor" data-f="floor" ${it.floor ? "checked" : ""}> Lies on the floor (a rug: other furniture can stand on it)</label>
+      <div class="sec" style="gap:6px"><h3>This piece is</h3>
+        <label class="toggle"><input type="checkbox" id="f-tv" data-f="tv" ${it.tv ? "checked" : ""}> A TV or screen</label>
+        <label class="toggle"><input type="checkbox" id="f-seat" data-f="seat" ${isSeat(it) ? "checked" : ""} ${it.tv || it.floor ? "disabled" : ""}> Somewhere people sit (for TV viewing distance)</label>
+        <label class="toggle"><input type="checkbox" id="f-floor" data-f="floor" ${it.floor ? "checked" : ""}> A rug (lies on the floor; other furniture can stand on it)</label>
+      </div>
       <div class="row">
         <button class="btn sm" data-act="rot90">Rotate 90°</button>
         <button class="btn sm" data-act="dup">Duplicate</button>
@@ -861,21 +1020,60 @@ function panelFurniture() {
       <button class="btn" data-act="add-custom">Custom size</button>
     </div>
     <details class="presets"><summary class="btn sm" style="width:max-content">Common sizes ▾</summary>
-      <div class="chips" style="margin-top:8px">${PRESETS.map((p, i) => `<button class="chip" data-act="preset" data-i="${i}">${esc(p[0])}</button>`).join("")}</div>
+      <div class="chips" style="margin-top:8px"><button class="chip" data-act="preset-combo" style="border-color:var(--sel)">TV stand with a TV on it</button>${PRESETS.map((p, i) => `<button class="chip" data-act="preset" data-i="${i}">${esc(p[0])}</button>`).join("")}</div>
     </details>
     <p class="tip">To place furniture where it stands now, use <b>Measure from photo → Room</b> and mark its footprint on the floor.</p>
   </div>`;
   h += `<div class="sec"><h3>In this room · ${S.items.length}</h3>`;
   if (!S.items.length) h += `<p class="tip">Nothing here yet. Add your first piece above, or measure it from a photo.</p>`;
-  else h += `<div class="list">${S.items.map(it => `<button class="li" data-act="select" data-id="${it.id}" aria-current="${sel && sel.id === it.id}">
+  else h += `<div class="list">${listOrder().map(({ it, depth }) => `<button class="li" data-act="select" data-id="${it.id}" aria-current="${sel && sel.id === it.id}" style="padding-left:${10 + depth * 22}px">
       <span class="thumb" style="${it.thumb ? `background-image:url(${it.thumb})` : `background:var(--f${it.color % 6})`}"></span>
-      <span class="t"><b>${esc(it.name)}</b><span>${esc(fmt(it.w))} × ${esc(fmt(it.d))}${it.h ? " × " + esc(fmt(it.h)) : ""}</span></span>
+      <span class="t"><b>${depth ? "↳ " : ""}${esc(it.name)}${it.tv && it.tv.size ? ` <span class="muted">${it.tv.size}″</span>` : ""}</b><span>${esc(fmt(it.w))} × ${esc(fmt(it.d))}${it.h ? " × " + esc(fmt(it.h)) : ""}</span></span>
       ${probs[it.id] ? `<span class="dot" title="${esc(probs[it.id].join(", "))}"></span>` : ""}</button>`).join("")}</div>`;
   h += `</div>
   <div class="sec"><h3>Show distances to</h3>
     <div class="seg"><button data-act="distTo" data-v="walls" aria-pressed="${S.distTo !== "all"}">Walls</button><button data-act="distTo" data-v="all" aria-pressed="${S.distTo === "all"}">Walls and furniture</button></div>
+    <label class="toggle"><input type="checkbox" id="f-showview" data-act="showView" ${S.showView !== false ? "checked" : ""}> Show TV viewing distance</label>
   </div>`;
   return h;
+}
+function listOrder() {
+  const out = [], walk = (it, depth) => { out.push({ it, depth }); childrenOf(it.id).forEach(c => walk(c, depth + 1)); };
+  S.items.filter(i => !baseOf(i)).forEach(i => walk(i, 0));
+  return out;
+}
+function stackSection(it) {
+  const bases = S.items.filter(b => canStackOn(it, b)), b = baseOf(it), kids = childrenOf(it.id);
+  if (it.floor) return "";
+  let h = `<div class="sec" style="gap:8px"><h3>Stands on</h3>
+    <select class="in" id="f-on" data-f="on"><option value="">The floor</option>${bases.map(o => `<option value="${o.id}" ${b && b.id === o.id ? "selected" : ""}>The ${esc(o.name)}</option>`).join("")}</select>`;
+  if (b) h += `<p class="tip">Moves and turns with the ${esc(b.name)}. ${it.h ? `Its top is <b>${esc(fmt(topOf(it)))}</b> from the floor (${esc(b.name)} ${esc(fmt(topOf(b)))} + ${esc(fmt(it.h))}).` : "Add its height to see how high its top is."} Drag it off the ${esc(b.name)} to put it on the floor.</p>`;
+  if (kids.length) h += `<div class="row small"><span class="muted">On top:</span>${kids.map(c => `<button class="chip" data-act="select" data-id="${c.id}">${esc(c.name)}</button>`).join("")}</div>`;
+  if (!it.tv && !kids.some(c => c.tv) && /(tv|stand|cabinet|console|unit|sideboard|dresser|credenza|chest|table|shelf|bench)/i.test(it.name)) h += `<button class="btn sm" data-act="add-tv-on" style="align-self:flex-start">Put a TV on top</button>`;
+  return h + `</div>`;
+}
+function tvSection(it) {
+  const size = it.tv.size, list = viewings(it);
+  let h = `<div class="sec" style="gap:8px"><h3>TV</h3>
+    <div class="row"><label class="f" style="flex-direction:row;align-items:center;gap:6px">Screen size<input class="in num" id="f-tvsize" data-f="tvsize" value="${size || ""}" style="width:70px" inputmode="decimal">inches</label>
+    <button class="btn sm" data-act="tv-fit">Set width and height from size</button></div>
+    <div class="row"><button class="btn sm" data-act="turn">Turn around</button><span class="tip">The highlighted edge is the screen.</span></div>`;
+  if (size > 0) {
+    h += `<p class="tip">For a ${size}″ screen: ${esc(viewRange(size))}.</p>`;
+    h += list.length ? `<div class="list">${list.slice(0, 5).map(x => viewRow(x, x.seat.name)).join("")}</div>`
+      : `<p class="tip">No seat is in front of the screen. Turn the TV around, or mark a piece as somewhere people sit.</p>`;
+  }
+  return h + `</div>`;
+}
+function seatSection(it) {
+  const rows = S.items.filter(t => t.tv).flatMap(t => viewings(t).filter(x => x.seat.id === it.id));
+  if (!rows.length) return "";
+  return `<div class="sec" style="gap:8px"><h3>TV viewing</h3><div class="list">${rows.map(x => viewRow(x, `${x.tv.tv.size}″ ${x.tv.name}`)).join("")}</div></div>`;
+}
+function viewRow(x, label) {
+  const bad = !x.verdict.ok || x.ang > 30;
+  return `<div class="li"><span class="dot" style="background:var(${bad ? "--warn" : "--sel"})"></span><span class="t"><b>${esc(label)}</b>
+    <span>${esc(fmt(x.dist))} · ${x.verdict.txt}${x.ang > 8 ? ` · ${Math.round(x.ang)}° to the side` : ""}</span></span></div>`;
 }
 function panelRoom() {
   const pts = S.room.pts, area = Math.abs(polyArea(pts)), b = roomBox();
@@ -938,9 +1136,10 @@ function panelProject() {
   </div>`;
   return h;
 }
-function addItem(name, w, d, h, floor, pos, thumb) {
+function addItem(name, w, d, h, floor, pos, thumb, extra) {
   commit();
-  const it = { id: uid(), name, w, d, h: h || 0, color: S.items.length % 6, floor: !!floor, thumb: thumb || null };
+  const it = Object.assign({ id: uid(), name, w, d, h: h || 0, color: S.items.length % 6, floor: !!floor, thumb: thumb || null }, extra ? JSON.parse(JSON.stringify(extra)) : {});
+  if (!it.tv && isTVName(name)) it.tv = { size: tvSizeFromWidth(w) };
   S.items.push(it);
   const c = pos || { ...roomCenter(), r: 0 };
   S.layouts.forEach(l => (l.pos[it.id] = { x: c.x, y: c.y, r: c.r || 0 }));
@@ -957,13 +1156,19 @@ pbody.addEventListener("click", e => {
     case "select": selectItem(b.dataset.id); break;
     case "color": commit(); it.color = +b.dataset.c; renderAll(); save(); break;
     case "rot90": rotate90(); break;
-    case "dup": { const p = posOf(it.id); const n = addItem(it.name, it.w, it.d, it.h, it.floor, { x: p.x + 20, y: p.y + 20, r: p.r }, it.thumb); n.color = it.color; renderAll(); break; }
+    case "dup": { const p = posOf(it.id); const n = addItem(it.name, it.w, it.d, it.h, it.floor, { x: p.x + 20, y: p.y + 20, r: p.r }, it.thumb, { tv: it.tv, seat: it.seat }); n.color = it.color; renderAll(); break; }
     case "del-item": removeItem(it.id); break;
     case "measure-item": openWizard("face", { target: it.id }); break;
     case "photo-face": openWizard("face"); break;
     case "photo-room": openWizard("floor"); break;
     case "add-custom": addItem("New piece", 100, 50, 0); setTimeout(() => $("#f-name")?.select(), 0); break;
-    case "preset": { const p = PRESETS[+b.dataset.i]; addItem(p[0], p[1], p[2], p[3], p[4]); break; }
+    case "preset": { const p = PRESETS[+b.dataset.i]; addItem(p[0], p[1], p[2], p[3], p[4], null, null, p[5]); break; }
+    case "preset-combo": { const st = addItem("TV stand", 160, 40, 50); addTvOn(st, 55); break; }
+    case "add-tv-on": { commit(); const size = [...TV_SIZES].reverse().find(z => tvDims(z).w <= it.w + 10) || 32; addTvOn(it, size); break; }
+    case "stack-on": { commit(); stackOn(it, itemById(b.dataset.id)); renderAll(); save(); toast(`${it.name} is on the ${itemById(b.dataset.id).name}`); break; }
+    case "tv-fit": { if (!(it.tv.size > 0)) break; commit(); const dm = tvDims(it.tv.size); it.w = dm.w; it.h = dm.h; renderAll(); save(); break; }
+    case "turn": { commit(); const p = posOf(it.id); p.r = normDeg(p.r + 180); setPos(it.id, p); renderAll(); save(); break; }
+    case "showView": S.showView = b.checked; renderPlan(); save(); break;
     case "distTo": S.distTo = b.dataset.v; renderAll(); save(); break;
     case "edit-room": editRoom = !editRoom; if (editRoom) sel = null; renderAll(); break;
     case "make-rect": { commit(); const bb = roomBox(), old = S.room.pts; S.room.pts = [{ x: 0, y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: Math.round(bb.y1 - bb.y0) }, { x: 0, y: Math.round(bb.y1 - bb.y0) }]; reattachOpenings(old); renderAll(); fit(); save(); break; }
@@ -997,14 +1202,25 @@ pbody.addEventListener("click", e => {
     case "new": commit(); S = blankProject(S.units); undoStack = []; redoStack = []; sel = null; confirmKey = null; renderAll(); fit(); save(); toast("New project started"); break;
   }
 });
+/* a TV of the given size, standing at the back of a piece and facing into the room */
+function addTvOn(base, size) {
+  const dm = tvDims(size), tv = { id: uid(), name: "TV", w: dm.w, d: 25, h: dm.h, color: 0, floor: false, thumb: null, tv: { size } };
+  S.items.push(tv); stackOn(tv, base);
+  sel = { type: "item", id: tv.id }; tab = "furniture"; renderAll(); save();
+  toast(`Added a ${size}″ TV on the ${base.name}`);
+}
 pbody.addEventListener("change", e => {
   const t = e.target;
   const it = sel && sel.type === "item" ? S.items.find(i => i.id === sel.id) : null;
   if (t.dataset.f && it) {
     const k = t.dataset.f;
     if (k === "name") { commit(); it.name = t.value.trim() || "Untitled"; }
-    else if (k === "floor") { commit(); it.floor = t.checked; }
-    else if (k === "r") { const v = parseFloat(t.value); if (isFinite(v)) { commit(); posOf(it.id).r = normDeg(v); } }
+    else if (k === "floor") { commit(); it.floor = t.checked; if (it.floor) { childrenOf(it.id).forEach(c => unstack(c, true)); unstack(it, true); } }
+    else if (k === "seat") { commit(); it.seat = t.checked; }
+    else if (k === "tv") { commit(); if (t.checked) it.tv = { size: tvSizeFromWidth(it.w) }; else delete it.tv; }
+    else if (k === "tvsize") { const v = parseFloat(String(t.value).replace(/[^\d.]/g, "")); if (v > 0 && v < 200) { commit(); it.tv.size = Math.round(v); } else toast("Type the screen size in inches, for example 55."); }
+    else if (k === "on") { commit(); if (!t.value) unstack(it, false); else { const nb = itemById(t.value); if (canStackOn(it, nb)) { unstack(it, true); stackOn(it, nb); } } }
+    else if (k === "r") { const v = parseFloat(t.value); if (isFinite(v)) { commit(); const p = posOf(it.id); p.r = normDeg(v); setPos(it.id, p); } }
     else { const v = parseLen(t.value); if (isFinite(v) && (v > 0 || k === "h")) { commit(); it[k] = Math.round(v * 10) / 10; } else toast(`Couldn't read “${t.value}”. Try 120 or 4' 2".`); }
     renderAll(); save();
   } else if (t.dataset.o) {
@@ -1140,7 +1356,8 @@ async function savePlanImage() {
         const nm = it.name.length > 22 ? it.name.slice(0, 21) + "…" : it.name; g.fillText(nm, cx + 22, cy);
         const nw = g.measureText(nm).width;
         g.fillStyle = LIGHT["ink-2"]; g.font = `500 12px ${mono}`;
-        g.fillText(`${fmt(it.w)} × ${fmt(it.d)}${it.h > 1 ? " × " + fmt(it.h) : ""}`, cx + 30 + nw, cy, colW - 40 - nw);
+        const extra = it.tv && it.tv.size ? ` · ${it.tv.size}″` : baseOf(it) ? ` · on ${baseOf(it).name}` : "";
+        g.fillText(`${fmt(it.w)} × ${fmt(it.d)}${it.h > 1 ? " × " + fmt(it.h) : ""}${extra}`, cx + 30 + nw, cy, colW - 40 - nw);
       });
       y += listH;
     }

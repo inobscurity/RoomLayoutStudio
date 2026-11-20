@@ -44,6 +44,16 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   show the distance to the nearest furniture.
 - Furniture that overlaps another piece or goes through a wall is outlined in red. Rugs can be marked as
   lying on the floor so other furniture can stand on them.
+- **Things on top of furniture:** set **Stands on** to put a piece on another one, such as a TV on a TV
+  cabinet or a lamp on a side table. It moves and turns with the piece underneath in every layout. The app
+  shows how high its top is, and warns if it sticks out past the edge. Drag it off to put it back on the
+  floor. **Common sizes → TV stand with a TV on it** adds both at once, and **Put a TV on top** adds a TV
+  sized to fit a cabinet.
+- **TV viewing distance:** mark a piece as a TV and give its screen size. A dashed line runs from the
+  screen to the seat most directly in front of it, showing the distance and whether it suits the screen.
+  The rule of thumb is 1 to 1.6 times the screen diagonal for an immersive picture, and up to 2.5 times for
+  comfortable viewing. Seats more than 30° to the side are flagged. Sofas, chairs and beds count as seats
+  automatically, and any piece can be marked as one.
 - **Layouts:** keep several arrangements of the same room and furniture, and switch between them.
 - **Room tab:** type the room size, drag the corners of an irregular room, and add doors (with their
   swing) and windows.
