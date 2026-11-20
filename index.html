@@ -1,0 +1,1630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!--APP-->
+<title>Room Layout Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen drafting table. Plan canvas on the left, a tool panel on the right
+   (a bottom sheet on phones). Measuring-tape yellow marks every measurement. */
+:root {
+  --paper: #eef1ee;
+  --panel: #f8faf8;
+  --raised: #ffffff;
+  --ink: #1d2628;
+  --ink-2: #5a696b;
+  --line: #d3dbd8;
+  --tape: #f2b705;
+  --tape-ink: #362900;
+  --sel: #0d7480;
+  --sel-soft: rgba(13,116,128,.12);
+  --warn: #be3a26;
+  --floor: #fbfcfa;
+  --wall: #263134;
+  --grid: #e6ebe8;
+  --grid-strong: #d2dad6;
+  --f0: #d9e6ef; --f1: #e9dfcc; --f2: #dbe8d6; --f3: #ecdbe0; --f4: #e2def0; --f5: #d8e7e5;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #13191b; --panel: #192124; --raised: #20292c; --ink: #e2eae7; --ink-2: #95a5a6;
+    --line: #2c383b; --tape: #f5c02a; --tape-ink: #2a2000; --sel: #45c1cc; --sel-soft: rgba(69,193,204,.16);
+    --warn: #ff7c64; --floor: #1d272a; --wall: #cdd8d5; --grid: #222d30; --grid-strong: #2c393c;
+    --f0: #2a3a46; --f1: #42392a; --f2: #2d3f2b; --f3: #45313a; --f4: #36324a; --f5: #27403e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #13191b; --panel: #192124; --raised: #20292c; --ink: #e2eae7; --ink-2: #95a5a6;
+  --line: #2c383b; --tape: #f5c02a; --tape-ink: #2a2000; --sel: #45c1cc; --sel-soft: rgba(69,193,204,.16);
+  --warn: #ff7c64; --floor: #1d272a; --wall: #cdd8d5; --grid: #222d30; --grid-strong: #2c393c;
+  --f0: #2a3a46; --f1: #42392a; --f2: #2d3f2b; --f3: #45313a; --f4: #36324a; --f5: #27403e;
+  color-scheme: dark;
+}
+html { box-sizing: border-box; height: 100%; }
+*, *::before, *::after { box-sizing: inherit; }
+body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 var(--font-body); overflow: hidden; }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+.num, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+#app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+.top {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.brand { display: flex; align-items: center; gap: 8px; font: 700 17px/1 var(--font-display); letter-spacing: -.01em; margin-right: auto; }
+.brand-mark { width: 26px; height: 26px; border-radius: 6px; background: var(--tape); display: grid; place-items: center; }
+.brand-mark svg { width: 18px; height: 18px; }
+.tools { display: flex; gap: 6px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  border-radius: var(--r); border: 1px solid var(--line); background: var(--raised); font-weight: 500; white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-2); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.icon { width: 36px; padding: 0; }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.tape { background: var(--tape); color: var(--tape-ink); border-color: var(--tape); font-weight: 600; }
+.btn.danger { color: var(--warn); }
+.btn.sm { min-height: 30px; padding: 0 10px; font-size: 13px; }
+.btn.block { width: 100%; }
+
+main { min-height: 0; display: grid; grid-template-columns: 1fr 360px; }
+.stage { position: relative; min-width: 0; min-height: 0; }
+#plan { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; display: block; }
+.banner {
+  position: absolute; left: 12px; right: 12px; top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: var(--r); background: var(--raised); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0,0,0,.08); max-width: 560px;
+}
+.banner p { margin: 0; flex: 1 1 220px; min-width: 0; }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 99px; background: var(--tape); color: var(--tape-ink); font: 600 11px/1.6 var(--font-body); letter-spacing: .04em; text-transform: uppercase; }
+.hud { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+.hud .btn { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.scale { position: absolute; right: 14px; bottom: 16px; font: 500 11px var(--font-mono); color: var(--ink-2); text-align: right; pointer-events: none; }
+.scale i { display: block; height: 6px; border: 1.5px solid var(--ink-2); border-top: 0; margin-top: 2px; margin-left: auto; }
+
+/* Panel */
+.panel { min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); }
+.tabs { display: flex; gap: 2px; padding: 8px max(12px, env(safe-area-inset-right, 0px)) 0 12px; border-bottom: 1px solid var(--line); align-items: flex-end; }
+.tab { border: 0; background: none; padding: 8px 10px 9px; font-weight: 600; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.sheet-toggle { margin-left: auto; display: none; }
+.pbody { overflow-y: auto; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px 16px; display: flex; flex-direction: column; gap: 18px; overscroll-behavior: contain; }
+.sec { display: flex; flex-direction: column; gap: 10px; }
+.sec h3 { margin: 0; font: 600 11px/1.2 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.card { background: var(--raised); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.card.sel { border-color: var(--sel); box-shadow: 0 0 0 3px var(--sel-soft); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+.grid4 { display: grid; grid-template-columns: 2fr repeat(3, minmax(0,1fr)); gap: 8px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+label.f { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); min-width: 0; }
+input.in, select.in {
+  width: 100%; min-height: 36px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); min-width: 0;
+}
+input.in.num { font-family: var(--font-mono); }
+input.in:focus, select.in:focus { border-color: var(--sel); outline: none; box-shadow: 0 0 0 3px var(--sel-soft); }
+.name-in { font: 600 16px var(--font-display) !important; }
+.muted { color: var(--ink-2); }
+.small { font-size: 12px; }
+.warnline { color: var(--warn); font-weight: 500; font-size: 13px; display: flex; gap: 6px; align-items: flex-start; }
+.dists { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; }
+.dist { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 6px; background: var(--paper); font-size: 12px; }
+.dist b { font: 500 13px var(--font-mono); }
+.swatches { display: flex; gap: 6px; }
+.sw { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); }
+.sw[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--raised); }
+.li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; width: 100%; }
+.li:last-child { border-bottom: 0; }
+.li:hover { background: var(--paper); }
+.li[aria-current="true"] { background: var(--sel-soft); }
+.li .thumb { width: 36px; height: 36px; border-radius: 6px; flex: none; border: 1px solid var(--line); background-size: cover; background-position: center; }
+.li .t { flex: 1; min-width: 0; }
+.li .t b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.li .t span { font: 500 12px var(--font-mono); color: var(--ink-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--raised); border-radius: 99px; padding: 5px 10px; font-size: 13px; }
+.chip:hover { border-color: var(--ink-2); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--raised); }
+.seg button { border: 0; background: none; padding: 7px 12px; font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--sel); }
+.confirm { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: var(--r); border: 1px solid var(--warn); }
+details.presets summary { cursor: pointer; font-weight: 500; list-style: none; }
+details.presets summary::-webkit-details-marker { display: none; }
+.tip { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; margin: 0; }
+.stat { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.stat b { font: 500 15px var(--font-mono); }
+
+/* Plan SVG */
+.g-minor { stroke: var(--grid); }
+.g-major { stroke: var(--grid-strong); }
+.wall { fill: none; stroke: var(--wall); stroke-linejoin: miter; }
+.floor { fill: var(--floor); }
+.item rect.body { stroke: var(--ink); stroke-opacity: .7; }
+.item.floorish rect.body { stroke-dasharray: 6 4; stroke-opacity: .5; }
+.item.bad rect.body { stroke: var(--warn); stroke-opacity: 1; }
+.item.on rect.body { stroke: var(--sel); stroke-opacity: 1; }
+.iname { fill: var(--ink); font-family: var(--font-body); font-weight: 600; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+.idim { fill: var(--ink-2); font-family: var(--font-mono); text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+.wlabel { fill: var(--ink-2); font-family: var(--font-mono); font-weight: 500; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+.tape-line { stroke: var(--tape); }
+.tape-box { fill: var(--tape); }
+.tape-txt { fill: var(--tape-ink); font-family: var(--font-mono); font-weight: 500; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.rot-h { fill: var(--raised); stroke: var(--sel); cursor: grab; }
+.rot-l { stroke: var(--sel); }
+.vtx { fill: var(--raised); stroke: var(--sel); cursor: move; }
+.mid { fill: var(--sel); fill-opacity: .25; stroke: var(--sel); cursor: copy; }
+.op-gap { fill: var(--floor); }
+.op-line { stroke: var(--wall); fill: none; }
+.op-arc { stroke: var(--ink-2); fill: none; stroke-dasharray: 4 3; }
+.op-win { stroke: var(--sel); }
+.op.on .op-hit { fill: var(--sel-soft); stroke: var(--sel); }
+.op-hit { fill: transparent; cursor: move; }
+
+/* Photo measuring */
+#wiz { position: fixed; inset: 0; z-index: 30; background: #0d1112; color: #e8eeec; display: grid; grid-template-rows: auto 1fr auto; }
+.wtop { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px)); background: #161c1e; }
+.wtop h2 { margin: 0; font: 700 16px var(--font-display); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wsteps { display: flex; gap: 4px; font-size: 12px; color: #9fb0ae; }
+.wsteps span { padding: 2px 8px; border-radius: 99px; border: 1px solid #2f3a3c; }
+.wsteps span.on { background: #f2b705; color: #2a2000; border-color: #f2b705; font-weight: 600; }
+.wstage { position: relative; min-height: 0; overflow: hidden; }
+#wcv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+#loupe { position: absolute; width: 132px; height: 132px; border-radius: 50%; border: 3px solid #f2b705; box-shadow: 0 6px 20px rgba(0,0,0,.5); pointer-events: none; top: 12px; left: 12px; background: #000; }
+.wpick { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px)); overflow-y: auto; }
+.wpick-in { max-width: 520px; display: flex; flex-direction: column; gap: 16px; }
+.wpick h3 { margin: 0; font: 700 24px/1.15 var(--font-display); text-wrap: balance; }
+.wpick ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: #c4d0ce; }
+.filebtn { position: relative; overflow: hidden; }
+.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 100px; }
+.wbar { background: #161c1e; padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 10px; max-height: 46vh; overflow-y: auto; }
+.wbar .muted { color: #9fb0ae; }
+.wbar input.in, .wbar select.in { background: #0d1112; border-color: #2f3a3c; color: #e8eeec; }
+.wbar .btn { background: #20292c; border-color: #2f3a3c; color: #e8eeec; }
+.wbar .btn.tape { background: #f2b705; color: #2a2000; border-color: #f2b705; }
+.wbar .seg { background: #20292c; border-color: #2f3a3c; }
+.wbar .seg button[aria-pressed="true"] { background: #e8eeec; color: #0d1112; }
+.wbar .warnline { color: #ff8a73; }
+.winstr { margin: 0; font-size: 14px; }
+.wread { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 500 13px var(--font-mono); color: #f5c02a; }
+.wiz-light .btn.primary { background: #e8eeec; color: #0d1112; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 50;
+  background: var(--ink); color: var(--paper); padding: 9px 14px; border-radius: var(--r); font-weight: 500; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: calc(100% - 32px);
+}
+
+@media (max-width: 820px) {
+  main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  .panel { border-left: 0; border-top: 1px solid var(--line); max-height: 42vh; }
+  .banner p { font-size: 13px; }
+  .panel.collapsed .pbody { display: none; }
+  .sheet-toggle { display: inline-flex; }
+  .tools .lbl { display: none; }
+  .top { gap: 6px; }
+  .brand { font-size: 15px; }
+}
+@media (max-width: 420px) {
+  .grid3 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .grid4 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .grid4 > :first-child { grid-column: 1 / -1; }
+  .wsteps { display: none; }
+  .tab { padding: 8px 7px 9px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<!--/APP-->
+</head>
+<body>
+<!--APPBODY-->
+<div id="app">
+  <header class="top">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#362900" stroke-width="2.2" stroke-linecap="round"><path d="M3 17h18M6 17v-4M10 17v-6M14 17v-4M18 17v-6"/></svg></span>
+      Room Layout Studio
+    </div>
+    <div class="tools">
+      <button class="btn icon" id="b-undo" title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+      <button class="btn icon" id="b-redo" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
+      <button class="btn tape" id="b-photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lbl">Measure from photo</span></button>
+    </div>
+  </header>
+  <main>
+    <div class="stage">
+      <svg id="plan" aria-label="Floor plan" role="img"></svg>
+      <div class="banner" id="banner" hidden>
+        <span class="pill">Example</span>
+        <p>This is a sample room. Measure your own from a photo, or enter its size in the Room tab.</p>
+        <button class="btn sm tape" data-act="photo-room">Measure my room</button>
+        <button class="btn sm" data-act="dismiss-banner">Hide</button>
+      </div>
+      <div class="hud">
+        <button class="btn sm" id="b-fit">Fit room</button>
+        <button class="btn sm" id="b-img">Save image</button>
+        <button class="btn sm" id="b-rot" hidden>Rotate 90°</button>
+      </div>
+      <div class="scale" id="scale"></div>
+    </div>
+    <aside class="panel" id="panel">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="furniture">Furniture</button>
+        <button class="tab" role="tab" data-tab="room">Room</button>
+        <button class="tab" role="tab" data-tab="layouts">Layouts</button>
+        <button class="tab" role="tab" data-tab="project">Project</button>
+        <button class="btn icon sm sheet-toggle" id="b-sheet" aria-label="Show or hide panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+      </div>
+      <div class="pbody" id="pbody"></div>
+    </aside>
+  </main>
+</div>
+
+<div id="wiz" hidden>
+  <div class="wtop">
+    <button class="btn sm" data-w="close" style="background:#20292c;border-color:#2f3a3c;color:#e8eeec">Done</button>
+    <h2 id="wtitle">Measure from a photo</h2>
+    <div class="wsteps" id="wsteps"></div>
+  </div>
+  <div class="wstage" id="wstage">
+    <canvas id="wcv"></canvas>
+    <canvas id="loupe" width="264" height="264" hidden></canvas>
+    <div class="wpick" id="wpick"></div>
+  </div>
+  <div class="wbar" id="wbar"></div>
+</div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+/* ================================================================
+   Room Layout Studio: measure a room and its furniture from photos, then try
+   layouts on a scaled floor plan. All lengths are stored in cm.
+   ================================================================ */
+const $ = (s, el = document) => el.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2, 9);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const DEG = Math.PI / 180;
+
+/* ---------- geometry ---------- */
+const V = {
+  add: (a, b) => ({ x: a.x + b.x, y: a.y + b.y }),
+  sub: (a, b) => ({ x: a.x - b.x, y: a.y - b.y }),
+  mul: (a, k) => ({ x: a.x * k, y: a.y * k }),
+  dot: (a, b) => a.x * b.x + a.y * b.y,
+  cross: (a, b) => a.x * b.y - a.y * b.x,
+  len: a => Math.hypot(a.x, a.y),
+  dist: (a, b) => Math.hypot(a.x - b.x, a.y - b.y),
+  norm: a => { const l = Math.hypot(a.x, a.y) || 1; return { x: a.x / l, y: a.y / l }; },
+  rot: (p, a) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) }),
+  mid: (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }),
+};
+function polyArea(pts) { let s = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; s += a.x * b.y - b.x * a.y; } return s / 2; }
+function pointInPoly(p, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i], b = pts[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+function edges(pts) { return pts.map((a, i) => [a, pts[(i + 1) % pts.length]]); }
+function rayHit(o, d, a, b) {
+  const ex = b.x - a.x, ey = b.y - a.y, den = d.x * ey - d.y * ex;
+  if (Math.abs(den) < 1e-9) return Infinity;
+  const ax = a.x - o.x, ay = a.y - o.y;
+  const t = (ax * ey - ay * ex) / den, s = (ax * d.y - ay * d.x) / den;
+  return t > 1e-6 && s >= -1e-9 && s <= 1 + 1e-9 ? t : Infinity;
+}
+function segsCross(p1, p2, p3, p4) {
+  const d1 = V.cross(V.sub(p4, p3), V.sub(p1, p3)), d2 = V.cross(V.sub(p4, p3), V.sub(p2, p3));
+  const d3 = V.cross(V.sub(p2, p1), V.sub(p3, p1)), d4 = V.cross(V.sub(p2, p1), V.sub(p4, p1));
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+function axes(rDeg) { const r = rDeg * DEG; return { u: { x: Math.cos(r), y: Math.sin(r) }, v: { x: -Math.sin(r), y: Math.cos(r) } }; }
+function rectCorners(c, w, d, rDeg, shrink = 0) {
+  const { u, v } = axes(rDeg), hw = w / 2 - shrink, hd = d / 2 - shrink;
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => ({ x: c.x + u.x * hw * a + v.x * hd * b, y: c.y + u.y * hw * a + v.y * hd * b }));
+}
+function rectsOverlap(A, B) {
+  for (const poly of [A, B]) for (let i = 0; i < 4; i++) {
+    const e = V.sub(poly[(i + 1) % 4], poly[i]), n = { x: -e.y, y: e.x };
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const p of A) { const s = V.dot(p, n); a0 = Math.min(a0, s); a1 = Math.max(a1, s); }
+    for (const p of B) { const s = V.dot(p, n); b0 = Math.min(b0, s); b1 = Math.max(b1, s); }
+    if (a1 <= b0 || b1 <= a0) return false;
+  }
+  return true;
+}
+function solveLinear(A, b) {
+  const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) if (r !== c) { const f = M[r][c] / M[c][c]; for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r[n] / r[i]);
+}
+/* Homography mapping 4 src points onto 4 dst points (DLT, h33 = 1). */
+function homography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = src[i], { x: u, y: v } = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  const h = solveLinear(A, b);
+  return h ? [...h, 1] : null;
+}
+function applyH(H, p) {
+  const w = H[6] * p.x + H[7] * p.y + H[8];
+  return { x: (H[0] * p.x + H[1] * p.y + H[2]) / w, y: (H[3] * p.x + H[4] * p.y + H[5]) / w, w };
+}
+function orderQuad(pts) {
+  const c = { x: pts.reduce((s, p) => s + p.x, 0) / 4, y: pts.reduce((s, p) => s + p.y, 0) / 4 };
+  const first = pts[0];
+  const s = [...pts].sort((a, b) => Math.atan2(a.y - c.y, a.x - c.x) - Math.atan2(b.y - c.y, b.x - c.x));
+  const i = s.indexOf(first);
+  return s.slice(i).concat(s.slice(0, i));
+}
+const normDeg = r => ((r % 360) + 360) % 360;
+
+/* ---------- units ---------- */
+function fmt(cm) {
+  if (!isFinite(cm)) return "–";
+  if (S.units === "metric") return cm >= 1000 ? (cm / 100).toFixed(2) + " m" : Math.round(cm) + " cm";
+  const inch = Math.round(cm / 2.54 * 2) / 2, ft = Math.floor(inch / 12), i = inch - ft * 12;
+  const is = Number.isInteger(i) ? String(i) : Math.floor(i) + "½";
+  return ft ? `${ft}′ ${is}″` : `${is}″`;
+}
+function fmtIn(cm) {
+  if (!isFinite(cm)) return "";
+  if (S.units === "metric") return String(Math.round(cm * 10) / 10);
+  const inch = Math.round(cm / 2.54 * 2) / 2, ft = Math.floor(inch / 12), i = inch - ft * 12;
+  return ft ? `${ft}' ${i}"` : `${i}"`;
+}
+function parseLen(str) {
+  let s = String(str ?? "").trim().toLowerCase().replace(/,/g, ".").replace(/[′’‘]/g, "'").replace(/[″”“]/g, '"').replace(/½/g, ".5");
+  if (!s) return NaN;
+  let m = s.match(/^(\d*\.?\d+)\s*(mm|cm|m)$/);
+  if (m) return +m[1] * { mm: 0.1, cm: 1, m: 100 }[m[2]];
+  m = s.match(/^(?:(\d*\.?\d+)\s*(?:'|ft|feet|foot))?\s*(?:(\d*\.?\d+)\s*(?:"|in|inch|inches)?)?$/);
+  if (!m || (m[1] === undefined && m[2] === undefined)) return NaN;
+  if (m[1] === undefined && !/["a-z]/.test(s)) return S.units === "metric" ? +m[2] : +m[2] * 2.54;
+  return ((+m[1] || 0) * 12 + (+m[2] || 0)) * 2.54;
+}
+const unitHint = () => S.units === "metric" ? "cm" : "ft/in";
+
+/* ---------- presets & sample ---------- */
+const PRESETS = [
+  ["Sofa, 3-seat", 210, 92, 85], ["Loveseat", 150, 90, 85], ["Armchair", 85, 85, 90], ["Coffee table", 110, 60, 45],
+  ["Side table", 50, 50, 55], ["TV stand", 160, 40, 50], ["Rug", 200, 290, 1, true], ["Bookshelf", 80, 30, 180],
+  ["Double bed", 140, 200, 50], ["Queen bed", 152, 203, 50], ["King bed", 193, 203, 50], ["Single bed", 90, 200, 50],
+  ["Nightstand", 50, 40, 55], ["Wardrobe", 100, 60, 200], ["Dresser", 120, 50, 80], ["Desk", 140, 70, 75],
+  ["Desk chair", 60, 60, 100], ["Dining table", 160, 90, 75], ["Dining chair", 45, 50, 90], ["Floor lamp", 35, 35, 160], ["Plant", 45, 45, 120],
+];
+const REFS = [
+  { id: "a4", name: "A4 paper", W: 21, H: 29.7 },
+  { id: "letter", name: "US Letter paper", W: 21.59, H: 27.94 },
+  { id: "card", name: "Bank card", W: 8.56, H: 5.398 },
+  { id: "tile30", name: "30 cm floor tile", W: 30, H: 30 },
+  { id: "tile60", name: "60 cm floor tile", W: 60, H: 60 },
+  { id: "custom", name: "Something I measured" },
+];
+
+function sampleProject() {
+  const it = (name, w, d, h, color, floor) => ({ id: uid(), name, w, d, h, color, floor: !!floor });
+  const sofa = it("Sofa", 210, 92, 85, 0), table = it("Coffee table", 110, 60, 45, 1), chair = it("Armchair", 85, 85, 90, 2),
+    tv = it("TV stand", 160, 40, 50, 4), rug = it("Rug", 200, 290, 1, 3, true), shelf = it("Bookshelf", 80, 30, 180, 5), lamp = it("Floor lamp", 35, 35, 160, 1);
+  const A = {}, B = {};
+  A[sofa.id] = { x: 47, y: 190, r: 90 }; A[table.id] = { x: 180, y: 190, r: 90 }; A[chair.id] = { x: 215, y: 323, r: 0 };
+  A[tv.id] = { x: 440, y: 190, r: 90 }; A[rug.id] = { x: 200, y: 190, r: 90 }; A[shelf.id] = { x: 380, y: 16, r: 0 }; A[lamp.id] = { x: 30, y: 40, r: 0 };
+  B[sofa.id] = { x: 230, y: 333, r: 0 }; B[table.id] = { x: 230, y: 220, r: 0 }; B[chair.id] = { x: 400, y: 230, r: 270 };
+  B[tv.id] = { x: 21, y: 210, r: 90 }; B[rug.id] = { x: 230, y: 240, r: 0 }; B[shelf.id] = { x: 444, y: 70, r: 90 }; B[lamp.id] = { x: 422, y: 345, r: 0 };
+  const la = { id: uid(), name: "As it is now", pos: A }, lb = { id: uid(), name: "Sofa facing the window", pos: B };
+  return {
+    version: 1, units: "metric", isExample: true, distTo: "walls", snap: true,
+    room: { pts: [{ x: 0, y: 0 }, { x: 460, y: 0 }, { x: 460, y: 380 }, { x: 0, y: 380 }], height: 250 },
+    openings: [{ id: uid(), type: "window", wall: 0, t: 230, w: 160 }, { id: uid(), type: "door", wall: 2, t: 395, w: 85, flip: 0 }],
+    items: [rug, sofa, table, chair, tv, shelf, lamp],
+    layouts: [la, lb], current: la.id, photos: [],
+  };
+}
+function blankProject(units) {
+  const l = { id: uid(), name: "Layout 1", pos: {} };
+  return { version: 1, units: units || "metric", isExample: false, distTo: "walls", snap: true,
+    room: { pts: [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 350 }, { x: 0, y: 350 }], height: 250 },
+    openings: [], items: [], layouts: [l], current: l.id, photos: [] };
+}
+
+/* ---------- state, storage, undo ---------- */
+let S = sampleProject();
+let sel = null;              // {type:'item'|'op', id}
+let tab = "furniture";
+let editRoom = false;
+let confirmKey = null;       // which in-panel confirmation is open
+let view = { x: -60, y: -60, w: 600, h: 500 };
+let undoStack = [], redoStack = [];
+
+const DBN = "roomtape", STORE = "kv"; // storage key from the app's first name; kept so saved projects still load
+function idb() { return new Promise((res, rej) => { try { const r = indexedDB.open(DBN, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); }
+async function idbGet(k) { try { const db = await idb(); return await new Promise((res, rej) => { const q = db.transaction(STORE).objectStore(STORE).get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); } catch (e) { return undefined; } }
+async function idbSet(k, v) { try { const db = await idb(); await new Promise((res, rej) => { const tx = db.transaction(STORE, "readwrite"); tx.objectStore(STORE).put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); return true; } catch (e) { return false; } }
+let saveTimer = 0;
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => idbSet("project", S), 300); }
+
+function snap() { const { photos, ...rest } = S; return JSON.stringify(rest); }
+function commit() { undoStack.push(snap()); if (undoStack.length > 80) undoStack.shift(); redoStack = []; updateUndo(); }
+function restore(json) { const photos = S.photos; S = Object.assign(JSON.parse(json), { photos }); validateSel(); renderAll(); save(); }
+function undo() { if (!undoStack.length) return; redoStack.push(snap()); restore(undoStack.pop()); }
+function redo() { if (!redoStack.length) return; undoStack.push(snap()); restore(redoStack.pop()); }
+function updateUndo() { $("#b-undo").disabled = !undoStack.length; $("#b-redo").disabled = !redoStack.length; }
+function validateSel() {
+  if (!sel) return;
+  if (sel.type === "item" && !S.items.find(i => i.id === sel.id)) sel = null;
+  else if (sel.type === "op" && !S.openings.find(o => o.id === sel.id)) sel = null;
+}
+const layout = () => S.layouts.find(l => l.id === S.current) || S.layouts[0];
+function posOf(id) {
+  const L = layout();
+  if (!L.pos[id]) L.pos[id] = { ...roomCenter(), r: 0 };
+  return L.pos[id];
+}
+function roomCenter() { const b = roomBox(); return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }; }
+function roomBox() { const p = S.room.pts; return { x0: Math.min(...p.map(q => q.x)), y0: Math.min(...p.map(q => q.y)), x1: Math.max(...p.map(q => q.x)), y1: Math.max(...p.map(q => q.y)) }; }
+function isRect(pts) { return pts.length === 4 && pts[0].y === pts[1].y && pts[1].x === pts[2].x && pts[2].y === pts[3].y && pts[3].x === pts[0].x && pts[0].x === 0 && pts[0].y === 0; }
+function wallInfo(i) {
+  const pts = S.room.pts, a = pts[i], b = pts[(i + 1) % pts.length], L = V.dist(a, b), e = V.norm(V.sub(b, a));
+  return { a, b, L, e, nIn: { x: -e.y, y: e.x } };
+}
+function opCenter(o) { const w = wallInfo(o.wall); return V.add(w.a, V.mul(w.e, o.t)); }
+function nearestWall(p) {
+  let best = null;
+  S.room.pts.forEach((_, i) => {
+    const w = wallInfo(i), t = clamp(V.dot(V.sub(p, w.a), w.e), 0, w.L), q = V.add(w.a, V.mul(w.e, t)), d = V.dist(p, q);
+    if (!best || d < best.d) best = { i, t, d };
+  });
+  return best;
+}
+function reattachOpenings(oldPts) {
+  const cur = S.room.pts; S.room.pts = oldPts;
+  const centers = S.openings.map(o => opCenter(o));
+  S.room.pts = cur;
+  S.openings.forEach((o, k) => { const n = nearestWall(centers[k]); o.wall = n.i; o.t = n.t; clampOp(o); });
+}
+function clampOp(o) { const w = wallInfo(o.wall); o.w = Math.min(o.w, w.L); o.t = clamp(o.t, o.w / 2, w.L - o.w / 2); }
+
+/* ---------- analysis: clearances, overlaps ---------- */
+function itemPoly(it, shrink = 0) { const p = posOf(it.id); return rectCorners(p, it.w, it.d, p.r, shrink); }
+function problems() {
+  const out = {};
+  const solid = S.items.filter(i => !i.floor);
+  const polys = new Map(solid.map(i => [i.id, itemPoly(i, 0.5)]));
+  const add = (id, msg) => (out[id] = out[id] || []).push(msg);
+  for (let a = 0; a < solid.length; a++) for (let b = a + 1; b < solid.length; b++) {
+    if (rectsOverlap(polys.get(solid[a].id), polys.get(solid[b].id))) { add(solid[a].id, "Overlaps " + solid[b].name); add(solid[b].id, "Overlaps " + solid[a].name); }
+  }
+  const walls = edges(S.room.pts);
+  for (const it of S.items) {
+    const P = itemPoly(it, 0.5);
+    const outside = P.some(p => !pointInPoly(p, S.room.pts)) || walls.some(([a, b]) => P.some((p, i) => segsCross(p, P[(i + 1) % 4], a, b)));
+    if (outside) add(it.id, "Goes through a wall or outside the room");
+  }
+  return out;
+}
+function clearances(it) {
+  const p = posOf(it.id), { u, v } = axes(p.r), hw = it.w / 2, hd = it.d / 2;
+  const segs = edges(S.room.pts).map(([a, b]) => ({ a, b, kind: "wall" }));
+  if (S.distTo === "all") for (const o of S.items) if (o.id !== it.id && !o.floor && !it.floor) {
+    const P = itemPoly(o); P.forEach((a, i) => segs.push({ a, b: P[(i + 1) % 4], kind: "item", name: o.name }));
+  }
+  const sides = [
+    { name: "Right", n: u, a: hw, along: v, half: hd }, { name: "Left", n: V.mul(u, -1), a: hw, along: v, half: hd },
+    { name: "Front", n: v, a: hd, along: u, half: hw }, { name: "Back", n: V.mul(v, -1), a: hd, along: u, half: hw },
+  ];
+  return sides.map(s => {
+    const base = V.add(p, V.mul(s.n, s.a));
+    const origins = [base, V.add(base, V.mul(s.along, s.half - 0.5)), V.add(base, V.mul(s.along, -(s.half - 0.5)))];
+    let best = { dist: Infinity };
+    for (const o of origins) for (const g of segs) {
+      const t = rayHit(o, s.n, g.a, g.b);
+      if (t < best.dist) best = { dist: t, from: o, to: V.add(o, V.mul(s.n, t)), kind: g.kind, name: g.name };
+    }
+    const side = Math.abs(s.n.x) > Math.abs(s.n.y) ? (s.n.x > 0 ? "Right" : "Left") : (s.n.y > 0 ? "Bottom" : "Top");
+    return { side, ...best };
+  }).sort((a, b) => ["Top", "Bottom", "Left", "Right"].indexOf(a.side) - ["Top", "Bottom", "Left", "Right"].indexOf(b.side));
+}
+function snapItem(it, p, tol) {
+  if (!S.snap) return;
+  for (let i = 0; i < S.room.pts.length; i++) {
+    const w = wallInfo(i), wa = Math.atan2(w.e.y, w.e.x) / DEG;
+    if (Math.abs(Math.sin(2 * (p.r - wa) * DEG)) > 0.03) continue;
+    const C = rectCorners(p, it.w, it.d, p.r);
+    const along = C.map(c => V.dot(V.sub(c, w.a), w.e));
+    if (Math.max(...along) < 0 || Math.min(...along) > w.L) continue;
+    const gap = Math.min(...C.map(c => V.dot(V.sub(c, w.a), w.nIn)));
+    if (Math.abs(gap) < tol) { p.x -= w.nIn.x * gap; p.y -= w.nIn.y * gap; }
+  }
+}
+
+/* ---------- plan rendering ---------- */
+const svg = $("#plan");
+function cmPerPx() { return view.w / Math.max(1, svg.clientWidth); }
+function syncAspect() {
+  const W = svg.clientWidth || 1, H = svg.clientHeight || 1, cx = view.x + view.w / 2, cy = view.y + view.h / 2;
+  const k = Math.max(view.w / W, view.h / H) || 1;
+  view.w = W * k; view.h = H * k; view.x = cx - view.w / 2; view.y = cy - view.h / 2;
+}
+function fit() {
+  const b = roomBox(), W = svg.clientWidth || 1, H = svg.clientHeight || 1;
+  const pad = 60, mobileTop = document.getElementById("banner").hidden ? 0 : 70;
+  const k = Math.max((b.x1 - b.x0 + 2 * pad) / W, (b.y1 - b.y0 + 2 * pad) / Math.max(80, H - mobileTop - 40));
+  view.w = W * k; view.h = H * k;
+  view.x = (b.x0 + b.x1) / 2 - view.w / 2; view.y = (b.y0 + b.y1) / 2 - view.h / 2 - (mobileTop * k) / 2 + 20 * k / 2;
+  renderPlan();
+}
+function textRot(rDeg, along90) {
+  const t = normDeg(rDeg + (along90 ? 90 : 0));
+  return (along90 ? 90 : 0) + (t > 90 && t <= 270 ? 180 : 0);
+}
+function renderPlan() {
+  syncAspect();
+  svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+  const k = cmPerPx();
+  svg.innerHTML = planMarkup(k);
+  // scale bar
+  const target = 90 * k, steps = S.units === "metric" ? [10, 20, 50, 100, 200, 500, 1000] : [15.24, 30.48, 60.96, 152.4, 304.8, 609.6];
+  const sv = steps.find(s => s >= target) || steps[steps.length - 1];
+  $("#scale").innerHTML = `${esc(fmt(sv))}<i style="width:${(sv / k).toFixed(0)}px"></i>`;
+  $("#b-rot").hidden = !(sel && sel.type === "item");
+}
+/* SVG markup of the plan for the current view; k = cm per screen pixel */
+function planMarkup(k) {
+  const pts = S.room.pts, f = n => +n.toFixed(2);
+  let h = "";
+  // grid
+  const minor = S.units === "metric" ? 10 : 15.24, major = S.units === "metric" ? 100 : 30.48;
+  const gridPath = step => {
+    let d = "";
+    const x0 = Math.floor(view.x / step) * step, y0 = Math.floor(view.y / step) * step;
+    for (let x = x0; x < view.x + view.w; x += step) d += `M${f(x)} ${f(view.y)}V${f(view.y + view.h)}`;
+    for (let y = y0; y < view.y + view.h; y += step) d += `M${f(view.x)} ${f(y)}H${f(view.x + view.w)}`;
+    return d;
+  };
+  if (minor / k >= 7) h += `<path class="g-minor" stroke-width="${k}" d="${gridPath(minor)}"/>`;
+  if (major / k >= 7) h += `<path class="g-major" stroke-width="${k}" d="${gridPath(major)}"/>`;
+  // room
+  const rd = "M" + pts.map(p => `${f(p.x)} ${f(p.y)}`).join("L") + "Z";
+  h += `<path class="wall" stroke-width="24" d="${rd}"/><path class="floor" d="${rd}"/>`;
+  // openings
+  for (const o of S.openings) {
+    const w = wallInfo(o.wall), c = opCenter(o), hw = o.w / 2, out = V.mul(w.nIn, -1);
+    const a1 = V.add(c, V.mul(w.e, -hw)), a2 = V.add(c, V.mul(w.e, hw));
+    const P = (...ps) => ps.map(p => `${f(p.x)},${f(p.y)}`).join(" ");
+    let g = `<polygon class="op-gap" points="${P(a1, a2, V.add(a2, V.mul(out, 13)), V.add(a1, V.mul(out, 13)))}"/>`;
+    if (o.type === "door") {
+      const hs = o.flip & 1 ? 1 : -1, n = o.flip & 2 ? out : w.nIn;
+      const hinge = V.add(c, V.mul(w.e, hs * hw)), other = V.add(c, V.mul(w.e, -hs * hw)), leaf = V.add(hinge, V.mul(n, o.w));
+      const sweep = V.cross(V.sub(leaf, hinge), V.sub(other, hinge)) > 0 ? 1 : 0;
+      g += `<line class="op-line" stroke-width="${2.2 * k}" x1="${f(hinge.x)}" y1="${f(hinge.y)}" x2="${f(leaf.x)}" y2="${f(leaf.y)}"/>`;
+      g += `<path class="op-arc" stroke-width="${1.2 * k}" d="M${f(leaf.x)} ${f(leaf.y)}A${f(o.w)} ${f(o.w)} 0 0 ${sweep} ${f(other.x)} ${f(other.y)}"/>`;
+    } else {
+      for (const off of [2.5, 6.5, 10.5]) {
+        const b1 = V.add(a1, V.mul(out, off)), b2 = V.add(a2, V.mul(out, off));
+        g += `<line class="op-win" stroke-width="${(off === 6.5 ? 1 : 1.6) * k}" x1="${f(b1.x)}" y1="${f(b1.y)}" x2="${f(b2.x)}" y2="${f(b2.y)}"/>`;
+      }
+    }
+    const hp = P(V.add(a1, V.mul(out, 18)), V.add(a2, V.mul(out, 18)), V.add(a2, V.mul(w.nIn, 10)), V.add(a1, V.mul(w.nIn, 10)));
+    g += `<polygon class="op-hit" stroke-width="${1.5 * k}" data-hit="op" data-id="${o.id}" points="${hp}"/>`;
+    h += `<g class="op${sel && sel.id === o.id ? " on" : ""}">${g}</g>`;
+  }
+  // wall length labels
+  const fs = 11 * k;
+  pts.forEach((_, i) => {
+    const w = wallInfo(i), m = V.mid(w.a, w.b), p = V.add(m, V.mul(w.nIn, -(12 + 14 * k)));
+    let ang = Math.atan2(w.e.y, w.e.x) / DEG; if (normDeg(ang) > 90 && normDeg(ang) <= 270) ang += 180;
+    if (w.L / k > 40) h += `<text class="wlabel" font-size="${fs}" transform="translate(${f(p.x)} ${f(p.y)}) rotate(${f(ang)})">${esc(fmt(w.L))}</text>`;
+  });
+  // furniture
+  const probs = problems();
+  const order = [...S.items].sort((a, b) => (b.floor ? 1 : 0) - (a.floor ? 1 : 0) || (sel && a.id === sel.id ? 1 : 0) - (sel && b.id === sel.id ? 1 : 0));
+  for (const it of order) {
+    const p = posOf(it.id), on = sel && sel.type === "item" && sel.id === it.id;
+    const cls = ["item", it.floor ? "floorish" : "", probs[it.id] ? "bad" : "", on ? "on" : ""].join(" ");
+    const long = it.d > it.w * 1.25, tr = textRot(p.r, long), Ls = (long ? it.d : it.w) / k, Ss = (long ? it.w : it.d) / k;
+    const nfs = Math.min(12, Math.max(9, Ss / 4)) * k;
+    let txt = "";
+    const fitsName = it.name.length * nfs * 0.58 <= (long ? it.d : it.w) * 1.02;
+    if (Ls > 34 && Ss > 14 && fitsName) {
+      const showDim = Ss > 30 && (fmt(it.w).length + fmt(it.d).length + 3) * nfs * 0.85 * 0.62 <= (long ? it.d : it.w);
+      txt += `<text class="iname" font-size="${f(nfs)}" y="${showDim ? f(-nfs * 0.55) : 0}">${esc(it.name)}</text>`;
+      if (showDim) txt += `<text class="idim" font-size="${f(nfs * 0.85)}" y="${f(nfs * 0.7)}">${esc(fmt(it.w))} × ${esc(fmt(it.d))}</text>`;
+    }
+    h += `<g class="${cls}" transform="translate(${f(p.x)} ${f(p.y)}) rotate(${f(p.r)})">` +
+      `<rect class="body" data-hit="item" data-id="${it.id}" x="${f(-it.w / 2)}" y="${f(-it.d / 2)}" width="${f(it.w)}" height="${f(it.d)}" rx="${Math.min(3, it.w / 6, it.d / 6)}" stroke-width="${(on ? 2.2 : 1.2) * k}" style="fill:var(--f${it.color % 6});fill-opacity:${it.floor ? 0.55 : 0.95}"/>` +
+      `<g transform="rotate(${tr})">${txt}</g></g>`;
+  }
+  // selection extras
+  if (sel && sel.type === "item") {
+    const it = S.items.find(i => i.id === sel.id);
+    if (it) {
+      const p = posOf(it.id), { u, v } = axes(p.r);
+      for (const c of clearances(it)) if (isFinite(c.dist) && c.dist > 0.5) h += tapeLine(c.from, c.to, c.dist, k);
+      const top = V.add(p, V.add(V.mul(u, it.w / 2), V.mul(v, -it.d / 2))), diag = V.norm(V.sub(u, v)), hd = V.add(top, V.mul(diag, 24 * k));
+      h += `<line class="rot-l" stroke-width="${1.5 * k}" x1="${f(top.x)}" y1="${f(top.y)}" x2="${f(hd.x)}" y2="${f(hd.y)}"/>`;
+      h += `<circle class="rot-h" data-hit="rot" cx="${f(hd.x)}" cy="${f(hd.y)}" r="${9 * k}" stroke-width="${2 * k}"/>`;
+      h += `<path d="M${f(hd.x - 4 * k)} ${f(hd.y + 1 * k)}a${4 * k} ${4 * k} 0 1 1 ${4 * k} ${3 * k}" fill="none" stroke="var(--sel)" stroke-width="${1.5 * k}" pointer-events="none"/>`;
+    }
+  }
+  if (editRoom) {
+    pts.forEach((p, i) => {
+      const n = pts[(i + 1) % pts.length], m = V.mid(p, n);
+      h += `<circle class="mid" data-hit="mid" data-i="${i}" cx="${f(m.x)}" cy="${f(m.y)}" r="${7 * k}" stroke-width="${1.5 * k}"/>`;
+    });
+    pts.forEach((p, i) => { h += `<circle class="vtx" data-hit="v" data-i="${i}" cx="${f(p.x)}" cy="${f(p.y)}" r="${10 * k}" stroke-width="${2.5 * k}"/>`; });
+  }
+  return h;
+}
+function tapeLine(a, b, d, k) {
+  const f = n => +n.toFixed(2), m = V.mid(a, b), dir = V.norm(V.sub(b, a)), n = { x: -dir.y, y: dir.x }, t = 5 * k;
+  const label = fmt(d), tw = (label.length * 6.6 + 10) * k, th = 16 * k;
+  if (d < tw + 6 * k) { const side = Math.abs(n.x) > Math.abs(n.y) ? n : V.mul(n, 1); m.x += side.x * (Math.abs(n.x) > 0.5 ? tw / 2 + 6 * k : th / 2 + 6 * k) ; m.y += side.y * (Math.abs(n.y) > 0.5 ? th / 2 + 6 * k : tw / 2 + 6 * k); }
+  let s = `<line class="tape-line" stroke-width="${2 * k}" x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(b.x)}" y2="${f(b.y)}"/>`;
+  for (const p of [a, b]) s += `<line class="tape-line" stroke-width="${2 * k}" x1="${f(p.x + n.x * t)}" y1="${f(p.y + n.y * t)}" x2="${f(p.x - n.x * t)}" y2="${f(p.y - n.y * t)}"/>`;
+  s += `<rect class="tape-box" x="${f(m.x - tw / 2)}" y="${f(m.y - th / 2)}" width="${f(tw)}" height="${f(th)}" rx="${3 * k}"/><text class="tape-txt" font-size="${f(11 * k)}" x="${f(m.x)}" y="${f(m.y)}">${esc(label)}</text>`;
+  return s;
+}
+
+/* ---------- plan interaction ---------- */
+const ptrs = new Map();
+let drag = null;
+function toWorld(e) { const r = svg.getBoundingClientRect(), k = view.w / r.width; return { x: view.x + (e.clientX - r.left) * k, y: view.y + (e.clientY - r.top) * k }; }
+svg.addEventListener("pointerdown", e => {
+  svg.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    drag = { type: "pinch", d0: Math.hypot(a.x - b.x, a.y - b.y), m0: toWorld({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }), w0: view.w };
+    return;
+  }
+  const p = toWorld(e), t = e.target.closest("[data-hit]");
+  const kind = t && t.dataset.hit;
+  if (kind === "item") {
+    const id = t.dataset.id, pos = posOf(id);
+    selectItem(id);
+    drag = { type: "item", id, off: { x: pos.x - p.x, y: pos.y - p.y }, moved: false, sx: e.clientX, sy: e.clientY };
+  } else if (kind === "rot") {
+    const pos = posOf(sel.id);
+    drag = { type: "rot", id: sel.id, moved: false, a0: Math.atan2(p.y - pos.y, p.x - pos.x) / DEG, r0: pos.r };
+  } else if (kind === "op") {
+    sel = { type: "op", id: t.dataset.id }; tab = "room"; renderPanel(); renderPlan();
+    drag = { type: "op", id: t.dataset.id, moved: false };
+  } else if (kind === "v") {
+    drag = { type: "v", i: +t.dataset.i, moved: false, old: S.room.pts.map(q => ({ ...q })) };
+  } else if (kind === "mid") {
+    commit();
+    const old = S.room.pts.map(q => ({ ...q })), i = +t.dataset.i, a = S.room.pts[i], b = S.room.pts[(i + 1) % S.room.pts.length];
+    S.room.pts.splice(i + 1, 0, roundPt(V.mid(a, b)));
+    reattachOpenings(old);
+    drag = { type: "v", i: i + 1, moved: true, committed: true, old: S.room.pts.map(q => ({ ...q })) };
+    renderPlan();
+  } else {
+    drag = { type: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false };
+  }
+});
+const roundPt = p => ({ x: Math.round(p.x), y: Math.round(p.y) });
+svg.addEventListener("pointermove", e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!drag) return;
+  const k = cmPerPx();
+  if (drag.type === "pinch") {
+    if (ptrs.size < 2) return;
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), r = svg.getBoundingClientRect();
+    const nw = clamp(drag.w0 * drag.d0 / Math.max(d, 1), 50, 6000), nk = nw / r.width;
+    view.w = nw; view.h = r.height * nk;
+    view.x = drag.m0.x - ((a.x + b.x) / 2 - r.left) * nk; view.y = drag.m0.y - ((a.y + b.y) / 2 - r.top) * nk;
+    renderPlan(); return;
+  }
+  if (drag.type === "pan") {
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
+    view.x = drag.vx - (e.clientX - drag.sx) * k; view.y = drag.vy - (e.clientY - drag.sy) * k;
+    renderPlan(); return;
+  }
+  const p = toWorld(e);
+  if (!drag.moved) {
+    if (drag.type === "item" && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return;
+    drag.moved = true; if (!drag.committed) commit();
+  }
+  if (drag.type === "item") {
+    const it = S.items.find(i => i.id === drag.id), pos = posOf(drag.id);
+    pos.x = Math.round((p.x + drag.off.x) * 2) / 2; pos.y = Math.round((p.y + drag.off.y) * 2) / 2;
+    snapItem(it, pos, 10 * k);
+  } else if (drag.type === "rot") {
+    const pos = posOf(drag.id);
+    let r = drag.r0 + Math.atan2(p.y - pos.y, p.x - pos.x) / DEG - drag.a0;
+    const near = Math.round(r / 15) * 15;
+    if (Math.abs(r - near) < 4) r = near;
+    pos.r = Math.round(normDeg(r) * 10) / 10;
+  } else if (drag.type === "op") {
+    const o = S.openings.find(q => q.id === drag.id), n = nearestWall(p);
+    o.wall = n.i; o.t = Math.round(n.t); clampOp(o);
+  } else if (drag.type === "v") {
+    S.room.pts[drag.i] = roundPt(p);
+    S.openings.forEach(clampOp);
+  }
+  renderPlan(); renderPanelLive();
+});
+function endPtr(e) {
+  ptrs.delete(e.pointerId);
+  if (!drag) return;
+  if (drag.type === "pinch") { if (ptrs.size === 0) drag = null; return; }
+  if (drag.type === "pan" && !drag.moved && sel) { sel = null; renderPlan(); renderPanel(); }
+  if (drag.moved && drag.type !== "pan") { save(); renderPanel(); }
+  drag = null;
+}
+svg.addEventListener("pointerup", endPtr);
+svg.addEventListener("pointercancel", endPtr);
+svg.addEventListener("dblclick", e => {
+  const t = e.target.closest("[data-hit='v']");
+  if (!t || S.room.pts.length <= 3) return;
+  commit(); const old = S.room.pts.map(q => ({ ...q }));
+  S.room.pts.splice(+t.dataset.i, 1); reattachOpenings(old); renderAll(); save();
+});
+svg.addEventListener("wheel", e => {
+  e.preventDefault();
+  const p = toWorld(e), z = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), nw = clamp(view.w * z, 50, 6000), r = svg.getBoundingClientRect(), nk = nw / r.width;
+  view.w = nw; view.h = r.height * nk; view.x = p.x - (e.clientX - r.left) * nk; view.y = p.y - (e.clientY - r.top) * nk;
+  renderPlan();
+}, { passive: false });
+document.addEventListener("keydown", e => {
+  if (!$("#wiz").hidden) return;
+  const inField = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || "");
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { if (inField) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (inField || !sel || sel.type !== "item") return;
+  const pos = posOf(sel.id), st = e.shiftKey ? 10 : 1;
+  const moves = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] };
+  if (moves[e.key]) { e.preventDefault(); commit(); pos.x += moves[e.key][0]; pos.y += moves[e.key][1]; renderPlan(); renderPanelLive(); save(); }
+  else if (e.key === "r" || e.key === "R") { rotate90(); }
+  else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeItem(sel.id); }
+});
+function selectItem(id) { sel = { type: "item", id }; tab = "furniture"; confirmKey = null; renderPanel(); renderPlan(); expandSheet(); }
+function rotate90() { if (!sel || sel.type !== "item") return; commit(); const p = posOf(sel.id); p.r = normDeg(Math.round(p.r / 90) * 90 + 90); renderPlan(); renderPanel(); save(); }
+function removeItem(id) {
+  commit(); S.items = S.items.filter(i => i.id !== id); S.layouts.forEach(l => delete l.pos[id]);
+  sel = null; renderAll(); save(); toast("Removed. Undo brings it back.");
+}
+
+/* ---------- panel ---------- */
+const pbody = $("#pbody");
+function renderAll() { renderPlan(); renderPanel(); updateUndo(); $("#banner").hidden = !S.isExample || S.bannerHidden; }
+function renderPanel() {
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === tab)));
+  pbody.innerHTML = ({ furniture: panelFurniture, room: panelRoom, layouts: panelLayouts, project: panelProject })[tab]();
+}
+/* live readouts during a drag, without rebuilding inputs that may have focus */
+function renderPanelLive() {
+  if (pbody.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName)) return;
+  renderPanel();
+}
+const colorSw = (cur) => `<div class="swatches">${[0, 1, 2, 3, 4, 5].map(c => `<button class="sw" data-act="color" data-c="${c}" aria-pressed="${cur === c}" aria-label="Color ${c + 1}" style="background:var(--f${c})"></button>`).join("")}</div>`;
+function panelFurniture() {
+  const probs = problems();
+  let h = "";
+  if (sel && sel.type === "item") {
+    const it = S.items.find(i => i.id === sel.id), p = posOf(it.id);
+    const cl = clearances(it);
+    h += `<div class="card sel">
+      <input class="in name-in" id="f-name" data-f="name" value="${esc(it.name)}" aria-label="Name">
+      <div class="grid3">
+        <label class="f">Width<input class="in num" id="f-w" data-f="w" value="${esc(fmtIn(it.w))}" inputmode="decimal"></label>
+        <label class="f">Depth<input class="in num" id="f-d" data-f="d" value="${esc(fmtIn(it.d))}" inputmode="decimal"></label>
+        <label class="f">Height<input class="in num" id="f-h" data-f="h" value="${esc(it.h ? fmtIn(it.h) : "")}" inputmode="decimal" placeholder="–"></label>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        ${colorSw(it.color % 6)}
+        <label class="f" style="flex-direction:row;align-items:center;gap:6px">Angle<input class="in num" id="f-r" data-f="r" value="${Math.round(p.r * 10) / 10}" style="width:72px" inputmode="decimal">°</label>
+      </div>
+      ${(probs[it.id] || []).map(m => `<div class="warnline">● ${esc(m)}</div>`).join("")}
+      <div class="sec"><h3>Gap to ${S.distTo === "all" ? "walls and furniture" : "walls"}, as seen on the plan</h3>
+        <div class="dists">${cl.map(c => `<div class="dist"><span>${c.side}${c.kind === "item" ? ` <span class="muted">(${esc(c.name)})</span>` : ""}</span><b>${isFinite(c.dist) ? esc(fmt(c.dist)) : "–"}</b></div>`).join("")}</div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="f-floor" data-f="floor" ${it.floor ? "checked" : ""}> Lies on the floor (a rug: other furniture can stand on it)</label>
+      <div class="row">
+        <button class="btn sm" data-act="rot90">Rotate 90°</button>
+        <button class="btn sm" data-act="dup">Duplicate</button>
+        <button class="btn sm" data-act="measure-item">Measure in a photo</button>
+        <button class="btn sm danger" data-act="del-item">Delete</button>
+      </div>
+    </div>`;
+  }
+  h += `<div class="sec"><h3>Add furniture</h3>
+    <div class="grid2">
+      <button class="btn" data-act="photo-face">From a photo</button>
+      <button class="btn" data-act="add-custom">Custom size</button>
+    </div>
+    <details class="presets"><summary class="btn sm" style="width:max-content">Common sizes ▾</summary>
+      <div class="chips" style="margin-top:8px">${PRESETS.map((p, i) => `<button class="chip" data-act="preset" data-i="${i}">${esc(p[0])}</button>`).join("")}</div>
+    </details>
+    <p class="tip">To place furniture where it stands now, use <b>Measure from photo → Room</b> and mark its footprint on the floor.</p>
+  </div>`;
+  h += `<div class="sec"><h3>In this room · ${S.items.length}</h3>`;
+  if (!S.items.length) h += `<p class="tip">Nothing here yet. Add your first piece above, or measure it from a photo.</p>`;
+  else h += `<div class="list">${S.items.map(it => `<button class="li" data-act="select" data-id="${it.id}" aria-current="${sel && sel.id === it.id}">
+      <span class="thumb" style="${it.thumb ? `background-image:url(${it.thumb})` : `background:var(--f${it.color % 6})`}"></span>
+      <span class="t"><b>${esc(it.name)}</b><span>${esc(fmt(it.w))} × ${esc(fmt(it.d))}${it.h ? " × " + esc(fmt(it.h)) : ""}</span></span>
+      ${probs[it.id] ? `<span class="dot" title="${esc(probs[it.id].join(", "))}"></span>` : ""}</button>`).join("")}</div>`;
+  h += `</div>
+  <div class="sec"><h3>Show distances to</h3>
+    <div class="seg"><button data-act="distTo" data-v="walls" aria-pressed="${S.distTo !== "all"}">Walls</button><button data-act="distTo" data-v="all" aria-pressed="${S.distTo === "all"}">Walls and furniture</button></div>
+  </div>`;
+  return h;
+}
+function panelRoom() {
+  const pts = S.room.pts, area = Math.abs(polyArea(pts)), b = roomBox();
+  const per = edges(pts).reduce((s, [a, c]) => s + V.dist(a, c), 0);
+  const areaTxt = S.units === "metric" ? (area / 1e4).toFixed(1) + " m²" : (area / 929.03).toFixed(0) + " sq ft";
+  let h = "";
+  if (sel && sel.type === "op") {
+    const o = S.openings.find(q => q.id === sel.id);
+    h += `<div class="card sel"><b style="font:600 16px var(--font-display)">${o.type === "door" ? "Door" : "Window"}</b>
+      <div class="grid2"><label class="f">Width<input class="in num" id="o-w" data-o="w" value="${esc(fmtIn(o.w))}"></label>
+      <label class="f">From wall corner<input class="in num" id="o-t" data-o="t" value="${esc(fmtIn(o.t - o.w / 2))}"></label></div>
+      <div class="row">${o.type === "door" ? `<button class="btn sm" data-act="flip-h">Swap hinge side</button><button class="btn sm" data-act="flip-io">Open in / out</button>` : ""}
+      <button class="btn sm danger" data-act="del-op">Delete</button></div>
+      <p class="tip">Drag it along the walls on the plan.</p></div>`;
+  }
+  h += `<div class="sec"><h3>Room</h3><div class="card">
+    <div class="stat"><span>Floor area</span><b>${areaTxt}</b></div>
+    <div class="stat"><span>Walls</span><b>${pts.length} · ${esc(fmt(per))} total</b></div>
+    ${isRect(pts) ? `<div class="grid2"><label class="f">Width<input class="in num" id="r-w" data-r="w" value="${esc(fmtIn(b.x1))}"></label><label class="f">Length<input class="in num" id="r-l" data-r="l" value="${esc(fmtIn(b.y1))}"></label></div>` : ""}
+    <label class="f">Ceiling height<input class="in num" id="r-h" data-r="h" value="${esc(fmtIn(S.room.height))}"></label>
+  </div></div>
+  <div class="sec"><h3>Shape</h3>
+    <div class="grid2"><button class="btn" data-act="photo-room">Measure from photo</button>
+    <button class="btn${editRoom ? " primary" : ""}" data-act="edit-room">${editRoom ? "Finish editing" : "Edit corners"}</button></div>
+    ${editRoom ? `<p class="tip">Drag a corner to move it. Drag a small dot in the middle of a wall to add a corner. Double-click or double-tap a corner to remove it.</p>` : ""}
+    ${!isRect(pts) ? `<button class="btn sm" data-act="make-rect">Reset to a rectangle</button>` : ""}
+  </div>
+  <div class="sec"><h3>Doors and windows</h3>
+    <div class="grid2"><button class="btn" data-act="add-door">Add door</button><button class="btn" data-act="add-window">Add window</button></div>
+  </div>
+  <div class="sec"><label class="toggle"><input type="checkbox" id="r-snap" data-act="snap" ${S.snap ? "checked" : ""}> Snap furniture to walls</label></div>`;
+  return h;
+}
+function panelLayouts() {
+  const L = layout();
+  let h = `<div class="sec"><h3>Layouts</h3><div class="list">${S.layouts.map(l => `<button class="li" data-act="pick-layout" data-id="${l.id}" aria-current="${l.id === L.id}"><span class="t"><b>${esc(l.name)}</b><span>${l.id === L.id ? "On the plan" : "Tap to show"}</span></span></button>`).join("")}</div></div>
+  <div class="sec"><h3>This layout</h3><div class="card">
+    <label class="f">Name<input class="in" id="l-name" data-l="name" value="${esc(L.name)}"></label>
+    <div class="row"><button class="btn sm" data-act="dup-layout">Copy as a new idea</button><button class="btn sm" data-act="save-image">Save as image</button>
+    ${S.layouts.length > 1 ? `<button class="btn sm danger" data-act="ask-del-layout">Delete</button>` : ""}</div>
+    ${confirmKey === "layout" ? `<div class="confirm"><span>Delete “${esc(L.name)}”? The furniture stays in your other layouts.</span><div class="row"><button class="btn sm danger" data-act="del-layout">Delete layout</button><button class="btn sm" data-act="cancel">Keep it</button></div></div>` : ""}
+  </div>
+  <p class="tip">Every layout uses the same room and furniture. Only positions and angles differ, so you can flip between ideas.</p></div>`;
+  return h;
+}
+function panelProject() {
+  let h = `<div class="sec"><h3>Units</h3><div class="seg"><button data-act="units" data-v="metric" aria-pressed="${S.units === "metric"}">Metric (cm)</button><button data-act="units" data-v="imperial" aria-pressed="${S.units === "imperial"}">Imperial (ft, in)</button></div></div>`;
+  h += `<div class="sec"><h3>Photos · ${S.photos.length}</h3>`;
+  if (!S.photos.length) h += `<p class="tip">Photos you measure are kept here so you can mark more furniture in them later.</p>`;
+  else h += `<div class="list">${S.photos.map(p => `<div class="li"><span class="thumb" style="background-image:url(${p.thumb || p.src})"></span><span class="t"><b>${p.kind === "floor" ? "Room photo" : "Furniture photo"}</b><span>${esc(new Date(p.created).toLocaleDateString())}</span></span><button class="btn sm" data-act="open-photo" data-id="${p.id}">Open</button><button class="btn sm icon danger" data-act="del-photo" data-id="${p.id}" aria-label="Delete photo">✕</button></div>`).join("")}</div>`;
+  h += `</div><div class="sec"><h3>Save and share</h3>
+    <div class="grid2"><button class="btn" data-act="export">Export file</button><button class="btn" data-act="import">Import file</button></div>
+    <button class="btn" data-act="save-image">Save the plan as an image</button>
+    <p class="tip">Your project saves in this browser automatically. Export a file to keep a copy or open it on another device.</p>
+    <button class="btn danger" data-act="ask-new">Start a new project</button>
+    ${confirmKey === "new" ? `<div class="confirm"><span>This clears the room, furniture, layouts and photos in this browser. Export first if you want a copy.</span><div class="row"><button class="btn sm danger" data-act="new">Clear and start over</button><button class="btn sm" data-act="cancel">Cancel</button></div></div>` : ""}
+  </div>
+  <div class="sec"><h3>Getting good measurements</h3>
+    <p class="tip">A photo is measured against something of known size lying flat in it. The bigger it is, the better: a rug or a grid of floor tiles beats a sheet of paper, and a sheet of paper beats a bank card. Mark corners zoomed in. Measurements farther than a few metres from the reference can be off by 5% or more, so check the important ones with a tape.</p>
+  </div>`;
+  return h;
+}
+function addItem(name, w, d, h, floor, pos, thumb) {
+  commit();
+  const it = { id: uid(), name, w, d, h: h || 0, color: S.items.length % 6, floor: !!floor, thumb: thumb || null };
+  S.items.push(it);
+  const c = pos || { ...roomCenter(), r: 0 };
+  S.layouts.forEach(l => (l.pos[it.id] = { x: c.x, y: c.y, r: c.r || 0 }));
+  sel = { type: "item", id: it.id }; tab = "furniture";
+  renderAll(); save();
+  return it;
+}
+pbody.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const a = b.dataset.act;
+  const it = sel && sel.type === "item" ? S.items.find(i => i.id === sel.id) : null;
+  const op = sel && sel.type === "op" ? S.openings.find(o => o.id === sel.id) : null;
+  switch (a) {
+    case "select": selectItem(b.dataset.id); break;
+    case "color": commit(); it.color = +b.dataset.c; renderAll(); save(); break;
+    case "rot90": rotate90(); break;
+    case "dup": { const p = posOf(it.id); const n = addItem(it.name, it.w, it.d, it.h, it.floor, { x: p.x + 20, y: p.y + 20, r: p.r }, it.thumb); n.color = it.color; renderAll(); break; }
+    case "del-item": removeItem(it.id); break;
+    case "measure-item": openWizard("face", { target: it.id }); break;
+    case "photo-face": openWizard("face"); break;
+    case "photo-room": openWizard("floor"); break;
+    case "add-custom": addItem("New piece", 100, 50, 0); setTimeout(() => $("#f-name")?.select(), 0); break;
+    case "preset": { const p = PRESETS[+b.dataset.i]; addItem(p[0], p[1], p[2], p[3], p[4]); break; }
+    case "distTo": S.distTo = b.dataset.v; renderAll(); save(); break;
+    case "edit-room": editRoom = !editRoom; if (editRoom) sel = null; renderAll(); break;
+    case "make-rect": { commit(); const bb = roomBox(), old = S.room.pts; S.room.pts = [{ x: 0, y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: Math.round(bb.y1 - bb.y0) }, { x: 0, y: Math.round(bb.y1 - bb.y0) }]; reattachOpenings(old); renderAll(); fit(); save(); break; }
+    case "add-door": case "add-window": {
+      commit();
+      let best = { len: -1, wall: 0, t: 0 };
+      S.room.pts.forEach((_, i) => {
+        const L = wallInfo(i).L, taken = S.openings.filter(o => o.wall === i).map(o => [o.t - o.w / 2, o.t + o.w / 2]).sort((x, y) => x[0] - y[0]);
+        let at = 0;
+        for (const [s0, s1] of [...taken, [L, L]]) { if (s0 - at > best.len) best = { len: s0 - at, wall: i, t: (at + s0) / 2 }; at = Math.max(at, s1); }
+      });
+      const isDoor = a === "add-door", o = { id: uid(), type: isDoor ? "door" : "window", wall: best.wall, t: best.t, w: Math.min(isDoor ? 85 : 120, Math.max(40, best.len - 10)), flip: 0 };
+      clampOp(o); S.openings.push(o); sel = { type: "op", id: o.id }; renderAll(); save(); break;
+    }
+    case "flip-h": commit(); op.flip = (op.flip || 0) ^ 1; renderAll(); save(); break;
+    case "flip-io": commit(); op.flip = (op.flip || 0) ^ 2; renderAll(); save(); break;
+    case "del-op": commit(); S.openings = S.openings.filter(o => o !== op); sel = null; renderAll(); save(); break;
+    case "snap": S.snap = b.checked; save(); break;
+    case "pick-layout": S.current = b.dataset.id; confirmKey = null; renderAll(); save(); break;
+    case "dup-layout": { commit(); const L = layout(), n = { id: uid(), name: L.name + " (idea)", pos: JSON.parse(JSON.stringify(L.pos)) }; S.layouts.push(n); S.current = n.id; renderAll(); save(); setTimeout(() => $("#l-name")?.select(), 0); break; }
+    case "ask-del-layout": confirmKey = "layout"; renderPanel(); break;
+    case "del-layout": commit(); S.layouts = S.layouts.filter(l => l.id !== S.current); S.current = S.layouts[0].id; confirmKey = null; renderAll(); save(); break;
+    case "cancel": confirmKey = null; renderPanel(); break;
+    case "units": S.units = b.dataset.v; renderAll(); save(); break;
+    case "open-photo": openWizard(null, { photoId: b.dataset.id }); break;
+    case "del-photo": S.photos = S.photos.filter(p => p.id !== b.dataset.id); renderPanel(); save(); break;
+    case "export": exportProject(); break;
+    case "save-image": savePlanImage(); break;
+    case "import": $("#importFile").click(); break;
+    case "ask-new": confirmKey = "new"; renderPanel(); break;
+    case "new": commit(); S = blankProject(S.units); undoStack = []; redoStack = []; sel = null; confirmKey = null; renderAll(); fit(); save(); toast("New project started"); break;
+  }
+});
+pbody.addEventListener("change", e => {
+  const t = e.target;
+  const it = sel && sel.type === "item" ? S.items.find(i => i.id === sel.id) : null;
+  if (t.dataset.f && it) {
+    const k = t.dataset.f;
+    if (k === "name") { commit(); it.name = t.value.trim() || "Untitled"; }
+    else if (k === "floor") { commit(); it.floor = t.checked; }
+    else if (k === "r") { const v = parseFloat(t.value); if (isFinite(v)) { commit(); posOf(it.id).r = normDeg(v); } }
+    else { const v = parseLen(t.value); if (isFinite(v) && (v > 0 || k === "h")) { commit(); it[k] = Math.round(v * 10) / 10; } else toast(`Couldn't read “${t.value}”. Try 120 or 4' 2".`); }
+    renderAll(); save();
+  } else if (t.dataset.o) {
+    const o = S.openings.find(q => q.id === sel.id), v = parseLen(t.value);
+    if (isFinite(v)) { commit(); if (t.dataset.o === "w") o.w = Math.max(20, v); else o.t = v + o.w / 2; clampOp(o); }
+    renderAll(); save();
+  } else if (t.dataset.r) {
+    const v = parseLen(t.value);
+    if (!isFinite(v) || v <= 0) { toast(`Couldn't read “${t.value}”.`); renderPanel(); return; }
+    commit();
+    if (t.dataset.r === "h") S.room.height = v;
+    else {
+      const b = roomBox(), w = t.dataset.r === "w" ? v : b.x1, l = t.dataset.r === "l" ? v : b.y1;
+      S.room.pts = [{ x: 0, y: 0 }, { x: Math.round(w), y: 0 }, { x: Math.round(w), y: Math.round(l) }, { x: 0, y: Math.round(l) }];
+      S.openings.forEach(clampOp); fit();
+    }
+    renderAll(); save();
+  } else if (t.dataset.l === "name") { commit(); layout().name = t.value.trim() || "Untitled layout"; renderAll(); save(); }
+});
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { tab = t.dataset.tab; confirmKey = null; renderPanel(); expandSheet(); }));
+$("#b-sheet").addEventListener("click", () => { $("#panel").classList.toggle("collapsed"); setTimeout(() => renderPlan(), 0); });
+function expandSheet() { if ($("#panel").classList.contains("collapsed")) { $("#panel").classList.remove("collapsed"); setTimeout(renderPlan, 0); } }
+$("#b-undo").onclick = undo; $("#b-redo").onclick = redo;
+$("#b-fit").onclick = fit; $("#b-img").onclick = savePlanImage; $("#b-rot").onclick = rotate90;
+$("#b-photo").onclick = () => openWizard(null);
+document.querySelector(".stage").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  if (b.dataset.act === "photo-room") openWizard("floor");
+  if (b.dataset.act === "dismiss-banner") { S.bannerHidden = true; $("#banner").hidden = true; save(); }
+});
+
+/* ---------- export / import ---------- */
+let downloadsP = null;
+function getDownloads() { if (!downloadsP) downloadsP = window.claude && typeof window.claude.use === "function" ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null); return downloadsP; }
+async function saveFile(name, blob, doneMsg) {
+  const dl = await getDownloads();
+  if (dl) {
+    try { await dl.save({ filename: name, data: blob }); toast(doneMsg); }
+    catch (err) { if (err && err.code !== "declined") toast("This view can't save files. Open the app in a browser tab to save."); }
+    return;
+  }
+  // On phones, offer the share sheet (save to Photos, send in a message); elsewhere, download.
+  try {
+    const file = new File([blob], name, { type: blob.type });
+    if (/^image\//.test(blob.type) && matchMedia("(pointer: coarse)").matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: name }); return;
+    }
+  } catch (err) { if (err && err.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast(doneMsg);
+}
+function exportProject() {
+  saveFile(`room-layout-${new Date().toISOString().slice(0, 10)}.json`, new Blob([JSON.stringify(S)], { type: "application/json" }), "Exported");
+}
+
+/* Plan image: always drawn in the light palette so it prints and shares well. */
+const LIGHT = {
+  paper: "#ffffff", panel: "#f8faf8", raised: "#ffffff", ink: "#1d2628", "ink-2": "#5a696b", line: "#d3dbd8", tape: "#f2b705", "tape-ink": "#362900",
+  sel: "#0d7480", "sel-soft": "rgba(13,116,128,.12)", warn: "#be3a26", floor: "#fbfcfa", wall: "#263134", grid: "#eef2f0", "grid-strong": "#dfe5e2",
+  f0: "#d9e6ef", f1: "#e9dfcc", f2: "#dbe8d6", f3: "#ecdbe0", f4: "#e2def0", f5: "#d8e7e5",
+  "font-body": '"Helvetica Neue", Arial, sans-serif', "font-mono": 'Menlo, Consolas, "Courier New", monospace',
+};
+const resolveVars = str => str.replace(/var\(--([\w-]+)\)/g, (m, n) => LIGHT[n] ?? m);
+function planCss() {
+  const all = [...document.querySelectorAll("style")].map(e => e.textContent).join("\n");
+  const a = all.indexOf("/* Plan SVG */"), b = all.indexOf("/* Photo measuring */");
+  return resolveVars(a >= 0 && b > a ? all.slice(a, b) : "");
+}
+function loadSvgImage(str) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(new Blob([str], { type: "image/svg+xml;charset=utf-8" })), img = new Image();
+    img.onload = () => { res(img); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("svg")); };
+    img.src = url;
+  });
+}
+let imaging = false;
+async function savePlanImage() {
+  if (imaging) return; imaging = true;
+  try {
+    const R = 2, b = roomBox(), pad = 70, vw = b.x1 - b.x0 + 2 * pad, vh = b.y1 - b.y0 + 2 * pad;
+    const scale = Math.min(1040 / vw, 820 / vh);            // logical px per cm
+    const pw = vw * scale, ph = vh * scale;
+    // draw the plan for a fixed view with nothing selected
+    const keep = { view: { ...view }, sel, editRoom };
+    view = { x: b.x0 - pad, y: b.y0 - pad, w: vw, h: vh }; sel = null; editRoom = false;
+    let markup; try { markup = planMarkup(1 / scale); } finally { view = keep.view; sel = keep.sel; editRoom = keep.editRoom; }
+    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw * R}" height="${ph * R}" viewBox="${b.x0 - pad} ${b.y0 - pad} ${vw} ${vh}"><style>${planCss()}</style>` +
+      `<rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${vw}" height="${vh}" fill="${LIGHT.paper}"/>${resolveVars(markup)}</svg>`;
+    const img = await loadSvgImage(svgStr);
+    try { await document.fonts.ready; } catch (e) {}
+
+    // page layout in logical px
+    const M = 40, Wd = Math.max(pw, 720) + 2 * M, headH = 96, colW = 300;
+    const items = [...S.items].sort((x, y) => x.name.localeCompare(y.name));
+    const cols = Math.max(1, Math.floor((Wd - 2 * M) / colW)), rows = Math.ceil(items.length / cols);
+    const listH = items.length ? 44 + rows * 24 : 0, footH = 44;
+    const Ht = headH + ph + listH + footH;
+    const c = document.createElement("canvas"); c.width = Math.round(Wd * R); c.height = Math.round(Ht * R);
+    const g = c.getContext("2d"); g.scale(R, R);
+    g.fillStyle = LIGHT.paper; g.fillRect(0, 0, Wd, Ht);
+    // header
+    const disp = '"Archivo", "Helvetica Neue", Arial, sans-serif', body = '"IBM Plex Sans", "Helvetica Neue", Arial, sans-serif', mono = '"IBM Plex Mono", Menlo, Consolas, monospace';
+    g.fillStyle = LIGHT.tape; g.fillRect(M, 30, 6, 44);
+    g.fillStyle = LIGHT.ink; g.textBaseline = "alphabetic"; g.textAlign = "left";
+    g.font = `700 26px ${disp}`; g.fillText(layout().name, M + 18, 56, Wd - 2 * M - 200);
+    const pts = S.room.pts, area = Math.abs(polyArea(pts));
+    const areaTxt = S.units === "metric" ? (area / 1e4).toFixed(1) + " m²" : (area / 929.03).toFixed(0) + " sq ft";
+    const size = isRect(pts) ? `${fmt(b.x1)} × ${fmt(b.y1)}` : `${pts.length} walls`;
+    g.font = `500 14px ${mono}`; g.fillStyle = LIGHT["ink-2"];
+    g.fillText(`Room ${size} · ${areaTxt} · ceiling ${fmt(S.room.height)}`, M + 18, 78);
+    g.textAlign = "right"; g.font = `400 13px ${body}`;
+    g.fillText(new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }), Wd - M, 56);
+    // plan
+    const px = (Wd - pw) / 2;
+    g.drawImage(img, px, headH, pw, ph);
+    // scale bar, bottom-left of the plan
+    const steps = S.units === "metric" ? [50, 100, 200, 500] : [30.48, 60.96, 152.4, 304.8];
+    const sv = steps.find(st => st * scale >= 70) || steps[steps.length - 1], sx = px + 14, sy = headH + ph - 16;
+    g.strokeStyle = LIGHT["ink-2"]; g.lineWidth = 1.5; g.beginPath(); g.moveTo(sx, sy - 6); g.lineTo(sx, sy); g.lineTo(sx + sv * scale, sy); g.lineTo(sx + sv * scale, sy - 6); g.stroke();
+    g.fillStyle = LIGHT["ink-2"]; g.font = `500 11px ${mono}`; g.textAlign = "left"; g.fillText(fmt(sv), sx, sy - 9);
+    // furniture list
+    let y = headH + ph;
+    if (items.length) {
+      g.strokeStyle = LIGHT.line; g.lineWidth = 1; g.beginPath(); g.moveTo(M, y + 12); g.lineTo(Wd - M, y + 12); g.stroke();
+      g.fillStyle = LIGHT["ink-2"]; g.font = `600 11px ${body}`; g.fillText(`FURNITURE · ${items.length}`, M, y + 34);
+      items.forEach((it, i) => {
+        const cx = M + (i % cols) * colW, cy = y + 58 + Math.floor(i / cols) * 24;
+        g.fillStyle = LIGHT["f" + (it.color % 6)]; g.fillRect(cx, cy - 11, 14, 14);
+        g.strokeStyle = LIGHT.ink; g.globalAlpha = 0.5; g.strokeRect(cx + 0.5, cy - 10.5, 13, 13); g.globalAlpha = 1;
+        g.fillStyle = LIGHT.ink; g.font = `600 13px ${body}`;
+        const nm = it.name.length > 22 ? it.name.slice(0, 21) + "…" : it.name; g.fillText(nm, cx + 22, cy);
+        const nw = g.measureText(nm).width;
+        g.fillStyle = LIGHT["ink-2"]; g.font = `500 12px ${mono}`;
+        g.fillText(`${fmt(it.w)} × ${fmt(it.d)}${it.h > 1 ? " × " + fmt(it.h) : ""}`, cx + 30 + nw, cy, colW - 40 - nw);
+      });
+      y += listH;
+    }
+    g.fillStyle = LIGHT["ink-2"]; g.font = `400 11px ${body}`; g.textAlign = "left";
+    g.fillText("Measured from photos with Room Layout Studio. Check important sizes with a tape.", M, Ht - 18);
+    const blob = await new Promise(res => c.toBlob(res, "image/png"));
+    if (!blob) throw new Error("png");
+    const slug = layout().name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "plan";
+    await saveFile(`room-layout-${slug}.png`, blob, "Image saved");
+  } catch (err) {
+    toast("The image couldn't be made in this browser.");
+  } finally { imaging = false; }
+}
+$("#importFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!d || !d.room || !Array.isArray(d.room.pts) || !Array.isArray(d.items) || !Array.isArray(d.layouts) || !d.layouts.length) throw new Error("shape");
+    commit(); S = Object.assign(blankProject(), d, { isExample: false }); if (!S.layouts.find(l => l.id === S.current)) S.current = S.layouts[0].id;
+    sel = null; renderAll(); fit(); save(); toast("Project imported");
+  } catch (err) { toast("That file isn't a Room Layout Studio project."); }
+});
+
+let toastT = 0;
+function toast(msg) { const t = $("#toast"); t.style.top = wiz.hidden ? "" : "calc(64px + env(safe-area-inset-top, 0px))"; t.style.bottom = wiz.hidden ? "" : "auto"; t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2600); }
+
+/* ================================================================
+   Photo measuring
+   ================================================================ */
+const wiz = $("#wiz"), cv = $("#wcv"), ctx = cv.getContext("2d"), loupe = $("#loupe"), lctx = loupe.getContext("2d");
+const LIMIT = { ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2 };
+let W = null; // wizard state
+function newWiz(kind) {
+  return { kind, step: kind ? "pick" : "choose", photo: null, img: null, v: { s: 1, tx: 0, ty: 0 },
+    ref: { type: "a4", W: 21, H: 29.7, pts: [] }, H: null, Hsign: 1,
+    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [] },
+    square: true, form: { name: "", w: "", d: "", h: "" }, edited: {}, target: null, active: null };
+}
+function openWizard(kind, opts = {}) {
+  W = newWiz(kind);
+  if (opts.target) { const it = S.items.find(i => i.id === opts.target); W.target = it.id; W.form.name = it.name; W.edited.name = true; }
+  wiz.hidden = false;
+  if (opts.photoId) {
+    const p = S.photos.find(q => q.id === opts.photoId);
+    W.kind = p.kind; W.tool = p.kind === "face" ? "width" : "room"; W.photo = p; W.step = "loading";
+    W.ref = JSON.parse(JSON.stringify(p.ref));
+    loadImg(p.src).then(img => { W.img = img; computeH(); W.step = "measure"; wsize(); wfit(); wrender(); });
+  }
+  wrender();
+}
+function closeWizard() { wiz.hidden = true; W = null; renderAll(); save(); }
+function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
+async function takeFile(file) {
+  try {
+    const url = URL.createObjectURL(file), img = await loadImg(url);
+    const m = 2000, s = Math.min(1, m / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    const src = c.toDataURL("image/jpeg", 0.85);
+    const t = document.createElement("canvas"), ts = 96 / Math.max(c.width, c.height); t.width = c.width * ts; t.height = c.height * ts;
+    t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
+    W.img = await loadImg(src);
+    W.photo = { id: uid(), kind: W.kind, src, thumb: t.toDataURL("image/jpeg", 0.7), created: Date.now(), ref: null, roomT: null };
+    W.step = "ref"; W.ref.pts = []; W.H = null;
+    wrender(); wsize(); wfit(); wdraw();
+  } catch (err) { toast("That file couldn't be opened as a photo."); }
+}
+function computeH() {
+  W.H = null;
+  if (W.ref.pts.length !== 4 || !(W.ref.W > 0 && W.ref.H > 0)) return;
+  const dst = [{ x: 0, y: 0 }, { x: W.ref.W, y: 0 }, { x: W.ref.W, y: W.ref.H }, { x: 0, y: W.ref.H }];
+  W.H = homography(W.ref.pts, dst);
+  if (W.H) { const c = W.ref.pts.reduce((s, p) => ({ x: s.x + p.x / 4, y: s.y + p.y / 4 }), { x: 0, y: 0 }); W.Hsign = Math.sign(applyH(W.H, c).w) || 1; }
+}
+function toPlane(p) { if (!W.H) return null; const q = applyH(W.H, p); return Math.sign(q.w) === W.Hsign ? q : null; }
+function pd(a, b) { const A = toPlane(a), B = toPlane(b); return A && B ? V.dist(A, B) : NaN; }
+function activeKey() { return W.step === "ref" ? "ref" : W.tool; }
+function setOf(key) { return key === "ref" ? W.ref.pts : W.sets[key]; }
+
+/* view transform */
+function wsize() { const r = $("#wstage").getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; }
+function wfit() {
+  if (!W.img) return; const r = cv.getBoundingClientRect();
+  const s = Math.min(r.width / W.img.width, r.height / W.img.height) * 0.96;
+  W.v = { s, tx: (r.width - W.img.width * s) / 2, ty: (r.height - W.img.height * s) / 2 };
+}
+const scr = p => ({ x: p.x * W.v.s + W.v.tx, y: p.y * W.v.s + W.v.ty });
+const imgPt = p => ({ x: (p.x - W.v.tx) / W.v.s, y: (p.y - W.v.ty) / W.v.s });
+
+function wdraw() {
+  if (!W || !W.img || W.step === "pick" || W.step === "choose" || W.step === "loading") return;
+  const d = devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  if (Math.abs(cv.width - r.width * d) > 1 || Math.abs(cv.height - r.height * d) > 1) wsize();
+  ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, r.width, r.height);
+  ctx.save(); ctx.translate(W.v.tx, W.v.ty); ctx.scale(W.v.s, W.v.s); ctx.drawImage(W.img, 0, 0); ctx.restore();
+  const Y = "#f5c02a", C = "#45d0db", P = "#ff8fb1", G = "#9be27a";
+  // reference
+  const R = W.ref.pts.map(scr);
+  if (R.length) {
+    ctx.lineWidth = 2; ctx.strokeStyle = Y; ctx.fillStyle = "rgba(245,192,42,.18)";
+    ctx.beginPath(); R.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (R.length === 4) { ctx.closePath(); ctx.fill(); } ctx.stroke();
+    if (R.length === 4 && W.H) { label(V.mid(R[0], R[1]), "A " + fmt(W.ref.W), Y); label(V.mid(R[1], R[2]), "B " + fmt(W.ref.H), Y); }
+    const showDots = W.step === "ref";
+    R.forEach((p, i) => dotAt(p, Y, showDots ? String(i + 1) : "", showDots ? 1 : 0.6));
+  }
+  if (W.step !== "measure") return;
+  const S2 = k => W.sets[k].map(scr);
+  if (W.kind === "floor") {
+    const rm = S2("room");
+    if (rm.length) {
+      ctx.strokeStyle = C; ctx.lineWidth = 2.5; ctx.beginPath(); rm.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+      if (rm.length >= 3) { ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(rm[rm.length - 1].x, rm[rm.length - 1].y); ctx.lineTo(rm[0].x, rm[0].y); ctx.stroke(); ctx.setLineDash([]); }
+      const ip = W.sets.room;
+      for (let i = 0; i < ip.length - 1; i++) label(V.mid(rm[i], rm[i + 1]), fmt(pd(ip[i], ip[i + 1])), C);
+      rm.forEach((p, i) => dotAt(p, C, String(i + 1), W.tool === "room" ? 1 : 0.5));
+    }
+    const fi = S2("item");
+    if (fi.length) {
+      ctx.strokeStyle = P; ctx.lineWidth = 2.5; ctx.beginPath(); fi.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+      const ip = W.sets.item;
+      if (ip.length > 1) label(V.mid(fi[0], fi[1]), "W " + fmt(pd(ip[0], ip[1])), P);
+      if (ip.length > 2) label(V.mid(fi[1], fi[2]), "D " + fmt(pd(ip[1], ip[2])), P);
+      fi.forEach((p, i) => dotAt(p, P, String(i + 1), W.tool === "item" ? 1 : 0.5));
+    }
+    const di = S2("dist");
+    if (di.length) {
+      ctx.strokeStyle = G; ctx.lineWidth = 2.5; ctx.beginPath(); di.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+      if (di.length === 2) label(V.mid(di[0], di[1]), fmt(pd(W.sets.dist[0], W.sets.dist[1])), G);
+      di.forEach(p => dotAt(p, G, "", W.tool === "dist" ? 1 : 0.5));
+    }
+  } else {
+    [["width", C, "W"], ["height", P, "H"], ["depth", G, "D"]].forEach(([k, col, tag]) => {
+      const s = S2(k); if (!s.length) return;
+      ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.beginPath(); s.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+      if (s.length === 2) label(V.mid(s[0], s[1]), tag + " " + fmt(pd(W.sets[k][0], W.sets[k][1])), col);
+      s.forEach(p => dotAt(p, col, "", W.tool === k ? 1 : 0.5));
+    });
+  }
+}
+function dotAt(p, col, txt, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, 7); ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = col; ctx.stroke();
+  ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, 7); ctx.fillStyle = col; ctx.fill();
+  if (txt) { ctx.font = "600 11px 'IBM Plex Sans', system-ui, sans-serif"; ctx.fillStyle = col; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(txt, p.x + 9, p.y - 7); }
+  ctx.globalAlpha = 1;
+}
+function label(p, txt, col) {
+  ctx.font = "500 12px 'IBM Plex Mono', ui-monospace, monospace"; const w = ctx.measureText(txt).width + 12;
+  ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(p.x - w / 2, p.y - 10, w, 20, 4) : ctx.rect(p.x - w / 2, p.y - 10, w, 20); ctx.fill();
+  ctx.fillStyle = "#111"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(txt, p.x, p.y + 0.5);
+}
+function drawLoupe(ip, sp) {
+  const z = Math.max(3 * W.v.s, 1.2), sz = 264, src = sz / z;
+  loupe.hidden = false;
+  const r = cv.getBoundingClientRect();
+  loupe.style.left = sp.x < 170 && sp.y < 170 ? "auto" : "12px"; loupe.style.right = sp.x < 170 && sp.y < 170 ? "12px" : "auto";
+  lctx.fillStyle = "#000"; lctx.fillRect(0, 0, sz, sz);
+  lctx.drawImage(W.img, ip.x - src / 2, ip.y - src / 2, src, src, 0, 0, sz, sz);
+  lctx.strokeStyle = "#f5c02a"; lctx.lineWidth = 2; lctx.beginPath();
+  lctx.moveTo(sz / 2, sz / 2 - 30); lctx.lineTo(sz / 2, sz / 2 - 6); lctx.moveTo(sz / 2, sz / 2 + 6); lctx.lineTo(sz / 2, sz / 2 + 30);
+  lctx.moveTo(sz / 2 - 30, sz / 2); lctx.lineTo(sz / 2 - 6, sz / 2); lctx.moveTo(sz / 2 + 6, sz / 2); lctx.lineTo(sz / 2 + 30, sz / 2); lctx.stroke();
+  void r;
+}
+
+/* wizard pointer handling */
+const wptr = new Map(); let wd = null;
+const local = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+cv.addEventListener("pointerdown", e => {
+  if (!W || !W.img) return;
+  cv.setPointerCapture(e.pointerId); wptr.set(e.pointerId, local(e));
+  if (wptr.size === 2) { const [a, b] = [...wptr.values()]; wd = { type: "pinch", d0: V.dist(a, b), m0: imgPt(V.mid(a, b)), s0: W.v.s }; loupe.hidden = true; return; }
+  const sp = local(e), key = activeKey(), set = setOf(key);
+  let hit = -1, best = 18;
+  set.forEach((p, i) => { const d = V.dist(scr(p), sp); if (d < best) { best = d; hit = i; } });
+  if (hit >= 0) { const s = scr(set[hit]); wd = { type: "pt", key, i: hit, off: V.sub(s, sp), start: sp, moved: false }; drawLoupe(set[hit], s); }
+  else wd = { type: "tap", start: sp, v0: { ...W.v }, moved: false };
+});
+cv.addEventListener("pointermove", e => {
+  if (!wd || !wptr.has(e.pointerId)) return;
+  wptr.set(e.pointerId, local(e));
+  const sp = local(e);
+  if (wd.type === "pinch") {
+    if (wptr.size < 2) return;
+    const [a, b] = [...wptr.values()], m = V.mid(a, b), s = clamp(wd.s0 * V.dist(a, b) / Math.max(1, wd.d0), 0.05, 12);
+    W.v = { s, tx: m.x - wd.m0.x * s, ty: m.y - wd.m0.y * s }; wdraw(); return;
+  }
+  if (wd.type === "tap") {
+    if (V.dist(sp, wd.start) > 7) wd.moved = true;
+    if (wd.moved) { W.v.tx = wd.v0.tx + sp.x - wd.start.x; W.v.ty = wd.v0.ty + sp.y - wd.start.y; wdraw(); }
+    return;
+  }
+  if (wd.type === "pt") {
+    if (!wd.moved && V.dist(sp, wd.start) < 3) return;
+    wd.moved = true;
+    const s = V.add(sp, wd.off), ip = imgPt(s);
+    ip.x = clamp(ip.x, 0, W.img.width); ip.y = clamp(ip.y, 0, W.img.height);
+    setOf(wd.key)[wd.i] = ip;
+    if (wd.key === "ref") computeH();
+    drawLoupe(ip, scr(ip)); wdraw(); wreadLive();
+  }
+});
+function wEnd(e) {
+  wptr.delete(e.pointerId);
+  if (!wd) return;
+  if (wd.type === "pinch") { if (!wptr.size) wd = null; return; }
+  if ((wd.type === "tap" || wd.type === "pt") && !wd.moved) {
+    const ip = imgPt(local(e)), key = activeKey(), set = setOf(key);
+    if (ip.x >= 0 && ip.y >= 0 && ip.x <= W.img.width && ip.y <= W.img.height) {
+      if (set.length < LIMIT[key]) {
+        set.push(ip);
+        if (key === "ref" && set.length === 4) { W.ref.pts = orderQuad(set); computeH(); }
+        afterPointsChange();
+      } else if (wd.type === "tap") toast("All points are placed. Drag one to adjust it, or press Clear.");
+    }
+  } else if (wd.type === "pt") afterPointsChange();
+  loupe.hidden = true; wd = null; wdraw();
+}
+cv.addEventListener("pointerup", wEnd);
+cv.addEventListener("pointercancel", wEnd);
+cv.addEventListener("wheel", e => {
+  if (!W || !W.img) return; e.preventDefault();
+  const sp = local(e), ip = imgPt(sp), s = clamp(W.v.s * Math.exp(-e.deltaY * 0.0015), 0.05, 12);
+  W.v = { s, tx: sp.x - ip.x * s, ty: sp.y - ip.y * s }; wdraw();
+}, { passive: false });
+window.addEventListener("resize", () => { if (W && W.img && !wiz.hidden) { wsize(); wdraw(); } renderPlan(); });
+
+function afterPointsChange() { syncForm(); wrenderBar(); wdraw(); }
+
+/* measurements derived from points */
+function measured() {
+  const s = W.sets, m = {};
+  if (W.kind === "floor") {
+    if (s.item.length >= 2) m.w = pd(s.item[0], s.item[1]);
+    if (s.item.length >= 3) m.d = pd(s.item[1], s.item[2]);
+  } else {
+    if (s.width.length === 2) m.w = pd(s.width[0], s.width[1]);
+    if (s.height.length === 2) m.h = pd(s.height[0], s.height[1]);
+    if (s.depth.length === 2) m.d = pd(s.depth[0], s.depth[1]);
+  }
+  return m;
+}
+function syncForm() {
+  const m = measured();
+  for (const k of ["w", "d", "h"]) if (!W.edited[k]) W.form[k] = isFinite(m[k]) ? fmtIn(Math.round(m[k])) : "";
+}
+function wreadout() {
+  const parts = [];
+  if (W.step === "ref") {
+    if (W.ref.pts.length === 4 && !W.H) parts.push("Those corners don't make a usable shape. Drag them onto the reference's corners.");
+    return parts.map(p => `<span>${esc(p)}</span>`).join("");
+  }
+  if (W.kind === "floor") {
+    if (W.tool === "room") {
+      const ip = W.sets.room;
+      for (let i = 0; i < ip.length - 1; i++) parts.push(`Wall ${i + 1}: ${fmt(pd(ip[i], ip[i + 1]))}`);
+      if (ip.length >= 3) parts.push(`Closing wall: ${fmt(pd(ip[ip.length - 1], ip[0]))}`);
+      if (ip.some(p => !toPlane(p))) parts.push("A point is above the floor's horizon");
+    } else if (W.tool === "dist" && W.sets.dist.length === 2) parts.push(`Distance: ${fmt(pd(W.sets.dist[0], W.sets.dist[1]))}`);
+  }
+  return parts.map(p => `<span>${esc(p)}</span>`).join("");
+}
+function wreadLive() { const el = $("#wread"); if (el) el.innerHTML = wreadout(); }
+
+function wrender() {
+  if (!W) return;
+  $("#wtitle").textContent = W.kind === "face" ? (W.target ? "Measure " + (S.items.find(i => i.id === W.target)?.name || "furniture") : "Measure furniture") : W.kind === "floor" ? "Measure the room" : "Measure from a photo";
+  const steps = ["Photo", "Reference", "Measure"], idx = { choose: 0, pick: 0, loading: 2, ref: 1, measure: 2 }[W.step];
+  $("#wsteps").innerHTML = steps.map((s, i) => `<span class="${i === idx ? "on" : ""}">${s}</span>`).join("");
+  const pick = $("#wpick");
+  pick.hidden = !(W.step === "pick" || W.step === "choose" || W.step === "loading");
+  cv.style.visibility = pick.hidden ? "visible" : "hidden";
+  if (W.step === "loading") pick.innerHTML = `<p class="muted" style="color:#9fb0ae">Opening the photo…</p>`;
+  else if (W.step === "choose") {
+    pick.innerHTML = `<div class="wpick-in"><h3>What's in the photo?</h3>
+      <button class="btn tape block" data-w="kind" data-k="floor" style="min-height:56px;justify-content:flex-start;padding:0 16px"><b>The room</b>&nbsp;· walls, floor and the furniture standing on it</button>
+      <button class="btn block" data-w="kind" data-k="face" style="min-height:56px;justify-content:flex-start;padding:0 16px;background:#20292c;border-color:#2f3a3c;color:#e8eeec"><b>One piece of furniture</b>&nbsp;· width and height, seen from the front</button>
+      <p class="muted" style="color:#9fb0ae;margin:0">Measuring from a photo needs one thing of known size lying flat in the picture, like a sheet of paper.</p></div>`;
+  } else if (W.step === "pick") {
+    const tips = W.kind === "floor"
+      ? `<li>Lay a sheet of A4 or Letter paper flat on the floor near the middle of the room. A rug or a floor tile you have measured works even better.</li><li>Stand in a corner, hold the phone at chest height and tilt it down so the floor and the far corners are in view.</li><li>Keep the corners where walls meet the floor visible, and the feet of the furniture you want to measure.</li>`
+      : `<li>Tape or hold a sheet of paper flat against the front of the furniture.</li><li>Photograph it straight on, from about the middle of its height.</li><li>Width and height are measured on the same flat face as the paper. Add depth from a side photo, or type it in.</li>`;
+    pick.innerHTML = `<div class="wpick-in"><h3>${W.kind === "floor" ? "Photograph the room" : "Photograph the furniture"}</h3><ol>${tips}</ol>
+      <div class="row"><label class="btn tape filebtn" style="min-height:48px;padding:0 18px">Take or choose a photo<input type="file" accept="image/*" id="wfile"></label></div></div>`;
+    $("#wfile").addEventListener("change", e => { const f = e.target.files[0]; if (f) takeFile(f); });
+  }
+  wrenderBar();
+  if (W.img && pick.hidden) { requestAnimationFrame(() => { wsize(); if (!W.fitted) { wfit(); W.fitted = true; } wdraw(); }); }
+}
+function wrenderBar() {
+  const bar = $("#wbar");
+  if (W.step === "pick" || W.step === "choose" || W.step === "loading") { bar.innerHTML = ""; bar.hidden = true; return; }
+  bar.hidden = false;
+  let h = "";
+  if (W.step === "ref") {
+    const n = W.ref.pts.length, ref = REFS.find(r => r.id === W.ref.type);
+    h += `<p class="winstr">${n < 4 ? `Tap the <b>4 corners</b> of ${W.ref.type === "custom" ? "the reference" : "the " + esc(ref.name.replace(/^([A-Z])(?![A-Z0-9])/, c => c.toLowerCase()))}, going around it. Zoom in for accuracy. <span class="muted">${n} of 4</span>` : `Drag the corners until they sit exactly on the reference. Pinch or scroll to zoom in.`}</p>
+    <div class="row">
+      <select class="in" id="w-ref" style="width:auto;flex:1 1 180px">${REFS.map(r => `<option value="${r.id}" ${r.id === W.ref.type ? "selected" : ""}>${esc(r.name)}${r.W ? ` (${esc(fmt(r.W))} × ${esc(fmt(r.H))})` : ""}</option>`).join("")}</select>
+      ${W.ref.type === "custom" ? `<input class="in num" id="w-rw" placeholder="Side A" value="${esc(W.ref.W ? fmtIn(W.ref.W) : "")}" style="width:96px"><input class="in num" id="w-rh" placeholder="Side B" value="${esc(W.ref.H ? fmtIn(W.ref.H) : "")}" style="width:96px">` : ""}
+    </div>
+    <div class="wread" id="wread">${wreadout()}</div>
+    <div class="row">
+      <button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button>
+      ${n === 4 ? `<button class="btn sm" data-w="swap">Swap sides A and B</button>` : ""}
+      <button class="btn tape" data-w="next" ${W.H ? "" : "disabled"} style="margin-left:auto">Next</button>
+    </div>
+    ${n === 4 ? `<p class="muted small" style="margin:0">Side A is labelled on the photo. If its length is wrong, swap the sides.</p>` : ""}`;
+  } else if (W.kind === "floor") {
+    const tools = [["room", "Room corners"], ["item", "Furniture"], ["dist", "Distance"]];
+    h += `<div class="seg">${tools.map(([k, l]) => `<button data-w="tool" data-t="${k}" aria-pressed="${W.tool === k}">${l}</button>`).join("")}</div>`;
+    const set = W.sets[W.tool];
+    if (W.tool === "room") {
+      const n = set.length;
+      const nearRight = n === 4 && W.sets.room.every((_, i) => { const P = W.sets.room.map(toPlane); if (P.some(p => !p)) return false; const a = P[(i + 3) % 4], b = P[i], c = P[(i + 1) % 4]; const ang = Math.acos(clamp(V.dot(V.norm(V.sub(a, b)), V.norm(V.sub(c, b))), -1, 1)) / DEG; return Math.abs(ang - 90) < 12; });
+      h += `<p class="winstr">Tap each corner where two walls meet the floor, going around the room. ${n < 3 ? `<span class="muted">Three corners are enough for a rectangular room.</span>` : ""}</p>
+      <div class="wread" id="wread">${wreadout()}</div>
+      ${nearRight ? `<label class="toggle"><input type="checkbox" id="w-square" ${W.square ? "checked" : ""}> Square up the corners (walls meet at 90°)</label>` : ""}
+      <div class="row"><button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button><button class="btn sm" data-w="clear" ${n ? "" : "disabled"}>Clear</button>
+      <button class="btn tape" data-w="use-room" ${n >= 3 ? "" : "disabled"} style="margin-left:auto">${n === 3 ? "Use as a rectangular room" : "Use as the room"}</button></div>`;
+    } else if (W.tool === "item") {
+      const n = set.length;
+      h += `<p class="winstr">Tap where the furniture meets the floor: <b>front-left</b>, <b>front-right</b>, then <b>one back corner</b>. ${n === 2 ? `<span class="muted">Can't see a back corner? Type the depth.</span>` : ""}</p>
+      ${formFields(true)}
+      <div class="row"><button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button>
+      <button class="btn tape" data-w="add-item" ${n >= 2 ? "" : "disabled"} style="margin-left:auto">Add to plan</button></div>
+      ${W.photo && W.photo.roomT ? `<p class="muted small" style="margin:0">It goes on the plan where it stands in this photo.</p>` : `<p class="muted small" style="margin:0">Mark the room corners in this photo first and the furniture lands where it stands now.</p>`}`;
+    } else {
+      h += `<p class="winstr">Tap two points on the floor to measure between them.</p><div class="wread" id="wread">${wreadout()}</div>
+      <div class="row"><button class="btn sm" data-w="clear" ${set.length ? "" : "disabled"}>Clear</button></div>`;
+    }
+  } else {
+    const tools = [["width", "Width"], ["height", "Height"], ["depth", "Depth"]];
+    h += `<div class="seg">${tools.map(([k, l]) => `<button data-w="tool" data-t="${k}" aria-pressed="${W.tool === k}">${l}</button>`).join("")}</div>
+    <p class="winstr">Tap two points for the <b>${W.tool}</b>, on the same flat face as the reference.</p>
+    ${formFields(false)}
+    <div class="row"><button class="btn sm" data-w="clear" ${W.sets[W.tool].length ? "" : "disabled"}>Clear ${W.tool}</button>
+    <button class="btn tape" data-w="save-face" style="margin-left:auto">${W.target ? "Update furniture" : "Add to plan"}</button></div>`;
+  }
+  const far = farWarning();
+  if (far) h += `<div class="warnline">● ${esc(far)}</div>`;
+  bar.innerHTML = h;
+}
+function formFields(floor) {
+  const f = W.form;
+  return `<div class="grid4">
+    <label class="f"><span class="muted">Name</span><input class="in" id="wf-name" data-wf="name" value="${esc(f.name)}" placeholder="Sofa"></label>
+    <label class="f"><span class="muted">Width</span><input class="in num" id="wf-w" data-wf="w" value="${esc(f.w)}" placeholder="${floor ? "tap" : unitHint()}"></label>
+    <label class="f"><span class="muted">Depth</span><input class="in num" id="wf-d" data-wf="d" value="${esc(f.d)}" placeholder="${unitHint()}"></label>
+    <label class="f"><span class="muted">Height</span><input class="in num" id="wf-h" data-wf="h" value="${esc(f.h)}" placeholder="${unitHint()}"></label>
+  </div>`;
+}
+function farWarning() {
+  if (!W.H || W.step !== "measure") return "";
+  const all = Object.values(W.sets).flat(), refSize = Math.max(W.ref.W, W.ref.H);
+  const c = toPlane(W.ref.pts[0]); if (!c) return "";
+  const far = all.some(p => { const q = toPlane(p); return q && V.dist(q, c) > refSize * 25; });
+  return far ? "Some points are far from the reference, so these lengths are rough. A bigger reference, or one placed nearer, helps." : "";
+}
+$("#wbar").addEventListener("input", e => {
+  const k = e.target.dataset.wf; if (!k) return;
+  W.form[k] = e.target.value; W.edited[k] = true;
+});
+$("#wbar").addEventListener("change", e => {
+  const t = e.target;
+  if (t.id === "w-ref") {
+    const r = REFS.find(q => q.id === t.value); W.ref.type = r.id;
+    if (r.W) { W.ref.W = r.W; W.ref.H = r.H; } else { W.ref.W = 0; W.ref.H = 0; }
+    computeH(); wrenderBar(); wdraw();
+  } else if (t.id === "w-rw" || t.id === "w-rh") {
+    const v = parseLen(t.value); if (t.id === "w-rw") W.ref.W = isFinite(v) ? v : 0; else W.ref.H = isFinite(v) ? v : 0;
+    computeH(); wrenderBar(); wdraw();
+  } else if (t.id === "w-square") W.square = t.checked;
+});
+wiz.addEventListener("click", e => {
+  const b = e.target.closest("[data-w]"); if (!b || !W) return;
+  const a = b.dataset.w;
+  if (a === "close") return closeWizard();
+  if (a === "kind") { W.kind = b.dataset.k; W.tool = W.kind === "face" ? "width" : "room"; W.step = "pick"; return wrender(); }
+  if (a === "undo-pt") { const s = setOf(activeKey()); s.pop(); if (activeKey() === "ref") computeH(); return afterPointsChange(); }
+  if (a === "clear") { W.sets[W.tool] = []; return afterPointsChange(); }
+  if (a === "swap") { W.ref.pts.push(W.ref.pts.shift()); computeH(); return afterPointsChange(); }
+  if (a === "tool") { W.tool = b.dataset.t; return afterPointsChange(); }
+  if (a === "next") {
+    W.step = "measure";
+    W.photo.ref = JSON.parse(JSON.stringify(W.ref));
+    if (!S.photos.includes(W.photo)) S.photos.unshift(W.photo);
+    W.fitted = false; save(); return wrender();
+  }
+  if (a === "use-room") return useRoom();
+  if (a === "add-item") return addFromFloor();
+  if (a === "save-face") return saveFace();
+});
+function keepRef() { if (W.photo) { W.photo.ref = JSON.parse(JSON.stringify(W.ref)); save(); } }
+
+function useRoom() {
+  let P = W.sets.room.map(toPlane);
+  if (P.some(p => !p)) return toast("A corner is above the floor's horizon. Move it down onto the floor.");
+  let square = W.square;
+  if (P.length === 3) { const [A, B, C] = P; P.push({ x: A.x + C.x - B.x, y: A.y + C.y - B.y }); square = true; }
+  else if (P.length === 4) { const ok = P.every((b, i) => { const a = P[(i + 3) % 4], c = P[(i + 1) % 4]; return Math.abs(Math.acos(clamp(V.dot(V.norm(V.sub(a, b)), V.norm(V.sub(c, b))), -1, 1)) / DEG - 90) < 12; }); square = square && ok; }
+  else square = false;
+  if (polyArea(P) < 0) P.reverse();
+  const ang = Math.atan2(P[1].y - P[0].y, P[1].x - P[0].x);
+  let R = P.map(p => V.rot(p, -ang)); const o = { ...R[0] };
+  R = R.map(p => V.sub(p, o));
+  const T = { a: ang, ox: o.x, oy: o.y };
+  if (square) {
+    const L = i => V.dist(R[i], R[(i + 1) % 4]), w = Math.round((L(0) + L(2)) / 2), h = Math.round((L(1) + L(3)) / 2);
+    R = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
+  } else {
+    const mx = Math.min(...R.map(p => p.x)), my = Math.min(...R.map(p => p.y));
+    R = R.map(p => roundPt({ x: p.x - mx, y: p.y - my })); T.ox += mx; T.oy += my;
+  }
+  if (V.len(V.sub(R[1], R[0])) < 50 || Math.abs(polyArea(R)) < 1e4) return toast("That room comes out smaller than 1 m². Check the reference size and the corners.");
+  commit();
+  const wasExample = S.isExample;
+  if (wasExample) { const l = { id: uid(), name: "Layout 1", pos: {} }; S.items = []; S.layouts = [l]; S.current = l.id; S.isExample = false; }
+  S.room.pts = R; S.openings = [];
+  W.photo.roomT = T; keepRef();
+  renderAll(); fit();
+  toast(wasExample ? "Room set. The example furniture was removed." : "Room set from the photo");
+  W.tool = "item"; afterPointsChange();
+}
+function planeToRoom(p, T) { const q = V.rot(p, -T.a); return { x: q.x - T.ox, y: q.y - T.oy }; }
+function cropThumb(pts, extendUp) {
+  try {
+    let x0 = Math.min(...pts.map(p => p.x)), x1 = Math.max(...pts.map(p => p.x)), y0 = Math.min(...pts.map(p => p.y)), y1 = Math.max(...pts.map(p => p.y));
+    const w = x1 - x0; if (extendUp) y0 -= w * 0.7;
+    const pad = Math.max(w, y1 - y0) * 0.08; x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(W.img.width, x1 + pad); y1 = Math.min(W.img.height, y1 + pad);
+    const s = 96 / Math.max(x1 - x0, y1 - y0, 1), c = document.createElement("canvas"); c.width = Math.max(1, (x1 - x0) * s); c.height = Math.max(1, (y1 - y0) * s);
+    c.getContext("2d").drawImage(W.img, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.75);
+  } catch (e) { return null; }
+}
+function formLen(k) { const v = parseLen(W.form[k]); return isFinite(v) && v > 0 ? v : NaN; }
+function addFromFloor() {
+  const ip = W.sets.item, P = ip.map(toPlane);
+  if (P.some(p => !p)) return toast("A point is above the floor's horizon. Move it onto the floor.");
+  const w = formLen("w"), d = formLen("d"), h = formLen("h");
+  if (!isFinite(w)) return toast("Width is missing. Tap the two front corners.");
+  if (!isFinite(d)) return toast("Depth is missing. Tap a back corner or type the depth.");
+  const e = V.norm(V.sub(P[1], P[0]));
+  let center;
+  if (P.length >= 3 && !W.edited.d) center = V.mid(P[0], P[2]);
+  else {
+    const mid = V.mid(ip[0], ip[1]), away = toPlane({ x: mid.x, y: mid.y - 40 }), m = V.mid(P[0], P[1]);
+    let n = { x: -e.y, y: e.x }; if (away && V.dot(n, V.sub(away, m)) < 0) n = V.mul(n, -1);
+    center = V.add(m, V.mul(n, d / 2));
+  }
+  let pos = null;
+  if (W.photo.roomT) { const c = planeToRoom(center, W.photo.roomT); pos = { x: Math.round(c.x), y: Math.round(c.y), r: Math.round(normDeg(Math.atan2(e.y, e.x) / DEG - W.photo.roomT.a / DEG) * 10) / 10 }; }
+  const name = W.form.name.trim() || "Furniture";
+  const floor = /\brug|carpet|mat\b/i.test(name);
+  addItem(name, Math.round(w), Math.round(d), isFinite(h) ? Math.round(h) : 0, floor, pos, cropThumb(ip, true));
+  toast(`Added ${name}: ${fmt(w)} × ${fmt(d)}`);
+  W.sets.item = []; W.form = { name: "", w: "", d: "", h: "" }; W.edited = {}; afterPointsChange();
+}
+function saveFace() {
+  const w = formLen("w"), d = formLen("d"), h = formLen("h"), name = W.form.name.trim() || "Furniture";
+  if (W.target) {
+    const it = S.items.find(i => i.id === W.target);
+    if (!it) return closeWizard();
+    commit();
+    if (isFinite(w)) it.w = Math.round(w); if (isFinite(d)) it.d = Math.round(d); if (isFinite(h)) it.h = Math.round(h);
+    it.name = name; const th = cropThumb([...W.sets.width, ...W.sets.height], false); if (th && (W.sets.width.length || W.sets.height.length)) it.thumb = th;
+    toast(`Updated ${name}`); closeWizard(); return;
+  }
+  if (!isFinite(w)) return toast("Width is missing. Measure it on the photo or type it.");
+  if (!isFinite(d)) return toast("Depth is missing. Measure it from a side photo, or type it.");
+  addItem(name, Math.round(w), Math.round(d), isFinite(h) ? Math.round(h) : 0, /\brug|carpet\b/i.test(name), null, cropThumb([...W.sets.width, ...W.sets.height], false));
+  toast(`Added ${name}`);
+  W.sets.width = []; W.sets.height = []; W.sets.depth = []; W.form = { name: "", w: "", d: "", h: "" }; W.edited = {}; W.tool = "width"; afterPointsChange();
+}
+
+/* ---------- start ---------- */
+(async function init() {
+  const saved = await idbGet("project");
+  if (saved && saved.room && Array.isArray(saved.items)) S = Object.assign(blankProject(), saved);
+  renderAll();
+  requestAnimationFrame(fit);
+  new ResizeObserver(() => renderPlan()).observe(document.querySelector(".stage"));
+  getDownloads();
+})();
+</script>
+<!--/APPBODY-->
+</body>
+</html>
