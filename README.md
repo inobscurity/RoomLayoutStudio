@@ -31,6 +31,11 @@ homography). Any two points you tap on the same surface can then be measured in 
 - **Furniture photo (the front).** Hold or tape a sheet of paper flat against the front of the piece and
   photograph it straight on. Tap two points for the width and two for the height. Add the depth from a side
   photo or type it in.
+- **Floor corners hidden by furniture?** Switch to **Ceiling corners**, both when tracing the room and when
+  linking a photo, and tap where the walls meet the ceiling. A ceiling corner is straight above its floor
+  corner, so the app uses the ceiling height from the Room tab to place it. Measure that height with a
+  tape. The Preview draws the whole room as a wireframe (floor, corners and ceiling), so you can check it
+  lines up with the photo.
 - **Things whose base is hidden,** like a bookcase or floor lamp behind a sofa. In the Furniture tool,
   choose **Top corners**, type the piece's height, and tap its top corners instead of its feet. Or choose
   **Top centre** and tap the top of a lamp. The app works out where the base is from the camera estimate.

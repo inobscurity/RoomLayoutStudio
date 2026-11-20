@@ -1482,7 +1482,7 @@ let W = null; // wizard state
 function newWiz(kind) {
   return { kind, step: kind ? "pick" : "choose", photo: null, img: null, v: { s: 1, tx: 0, ty: 0 },
     ref: { type: "a4", W: 21, H: 29.7, pts: [] }, H: null, Hsign: 1,
-    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [], link: [], view: [], hgt: [] }, itemMode: "floor",
+    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [], link: [], view: [], hgt: [] }, itemMode: "floor", cornerMode: "floor",
     linkV: [], linkPick: null, fade: false, Hi: null, cam: null,
     square: true, form: { name: "", w: "", d: "", h: "" }, edited: {}, target: null, active: null };
 }
@@ -1570,6 +1570,9 @@ function heightAbove(base, top) {
   return best;
 }
 const itemZ = () => W.itemMode === "floor" ? 0 : formLen("h");
+/* room corners can be tapped where the walls meet the floor, or the ceiling when the floor is hidden */
+const cornerZ = () => W.cornerMode === "ceiling" ? (S.room.height || 250) : 0;
+const cornerPt = p => toPlaneAt(p, cornerZ());
 function project(cam, X, Y, Z) {
   const c = i => cam.r1[i] * X + cam.r2[i] * Y + cam.r3[i] * Z + cam.t[i], z = c(2);
   return z > 1 ? { x: cam.f * c(0) / z + cam.cx, y: cam.f * c(1) / z + cam.cy, z } : null;
@@ -1578,8 +1581,8 @@ const roomToPlane = (r, T) => V.rot({ x: r.x + T.ox, y: r.y + T.oy }, T.a);
 /* where this photo sits on the plan, from two room corners tapped in it */
 function linkResult() {
   if (W.sets.link.length < 2) return null;
-  const P = W.sets.link.map(toPlane);
-  if (P.some(q => !q)) return { err: "A point is above the floor's horizon. Move it onto the floor." };
+  const P = W.sets.link.map(cornerPt);
+  if (P.some(q => !q)) return { err: W.cornerMode === "ceiling" ? "A point can't be on the ceiling. Check the ceiling height and the point." : "A point is above the floor's horizon. Move it onto the floor." };
   const R = W.linkV.map(v => S.room.pts[v]);
   if (R.some(q => !q)) return null;
   const dp = V.dist(P[0], P[1]), dr = V.dist(R[0], R[1]);
@@ -1629,7 +1632,7 @@ function wdraw() {
       ctx.strokeStyle = C; ctx.lineWidth = 2.5; ctx.beginPath(); rm.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
       if (rm.length >= 3) { ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(rm[rm.length - 1].x, rm[rm.length - 1].y); ctx.lineTo(rm[0].x, rm[0].y); ctx.stroke(); ctx.setLineDash([]); }
       const ip = W.sets.room;
-      for (let i = 0; i < ip.length - 1; i++) label(V.mid(rm[i], rm[i + 1]), fmt(pd(ip[i], ip[i + 1])), C);
+      for (let i = 0; i < ip.length - 1; i++) label(V.mid(rm[i], rm[i + 1]), fmt(pdz(ip[i], ip[i + 1], cornerZ())), C);
       rm.forEach((p, i) => dotAt(p, C, String(i + 1), W.tool === "room" ? 1 : 0.5));
     }
     const fi = S2("item");
@@ -1681,6 +1684,13 @@ function drawPlanOnPhoto() {
     ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
   });
   ctx.setLineDash([]);
+  const Hc = S.room.height || 250;
+  ctx.strokeStyle = "rgba(69,208,219,.6)"; ctx.lineWidth = 1.5 * lw;
+  pts.forEach((a, i) => {
+    const b = pts[(i + 1) % pts.length], A = toImg(a, Hc), B = toImg(b, Hc), A0 = toImg(a, 0.01);
+    if (A && B && !isOpen(i)) { ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); }
+    if (A && A0 && !(isOpen(i) && isOpen((i - 1 + pts.length) % pts.length))) { ctx.beginPath(); ctx.moveTo(A0.x, A0.y); ctx.lineTo(A.x, A.y); ctx.stroke(); }
+  });
   // windows (sill to top) and doors, drawn on their walls
   for (const o of S.openings) {
     const w = wallInfo(o.wall), c = opCenter(o), a1 = V.add(c, V.mul(w.e, -o.w / 2)), a2 = V.add(c, V.mul(w.e, o.w / 2));
@@ -1849,9 +1859,10 @@ function wreadout() {
   if (W.kind === "floor") {
     if (W.tool === "room") {
       const ip = W.sets.room;
-      for (let i = 0; i < ip.length - 1; i++) parts.push(`Wall ${i + 1}: ${fmt(pd(ip[i], ip[i + 1]))}`);
-      if (ip.length >= 3) parts.push(`Closing wall: ${fmt(pd(ip[ip.length - 1], ip[0]))}`);
-      if (ip.some(p => !toPlane(p))) parts.push("A point is above the floor's horizon");
+      const z = cornerZ();
+      for (let i = 0; i < ip.length - 1; i++) parts.push(`Wall ${i + 1}: ${fmt(pdz(ip[i], ip[i + 1], z))}`);
+      if (ip.length >= 3) parts.push(`Closing wall: ${fmt(pdz(ip[ip.length - 1], ip[0], z))}`);
+      if (ip.some(p => !cornerPt(p))) parts.push(z ? "A point can't be on the ceiling at this height" : "A point is above the floor's horizon");
     } else if (W.tool === "dist" && W.sets.dist.length === 2) parts.push(`Distance: ${fmt(pd(W.sets.dist[0], W.sets.dist[1]))}`);
   }
   return parts.map(p => `<span>${esc(p)}</span>`).join("");
@@ -1918,8 +1929,8 @@ function wrenderBar() {
         <path d="M${pts.map(q => `${q.x} ${q.y}`).join("L")}Z" fill="#1d272a" stroke="#cdd8d5" stroke-width="${3 * k2}"/>
         ${pts.map((q, i) => { const pi = W.linkV.indexOf(i), on = W.linkPick === i; return `<g data-w="link-v" data-v="${i}" style="cursor:pointer"><circle cx="${q.x}" cy="${q.y}" r="${14 * k2}" fill="${on ? "#f2b705" : pi >= 0 ? "#45d0db" : "#20292c"}" stroke="#e8eeec" stroke-width="${2 * k2}"/><text x="${q.x}" y="${q.y}" fill="${on || pi >= 0 ? "#111" : "#e8eeec"}" font-size="${13 * k2}" font-family="IBM Plex Sans, sans-serif" font-weight="600" text-anchor="middle" dominant-baseline="central" pointer-events="none">${i + 1}</text></g>`; }).join("")}
       </svg>`;
-      const step = W.linkPick !== null ? `Now tap corner <b>${W.linkPick + 1}</b> in the photo, where the walls meet the floor.` : W.sets.link.length < 2 ? `Tap corner ${W.sets.link.length ? "another corner" : "a corner"} on the small plan, then the same corner in the photo.` : `Linked. Check that the blue outline sits on the room in the photo, then save.`;
-      h += `<p class="winstr">Link this photo to the plan with two room corners you can see in it. ${step}</p>
+      const step = W.linkPick !== null ? `Now tap corner <b>${W.linkPick + 1}</b> in the photo, where the walls meet the ${W.cornerMode === "ceiling" ? "ceiling" : "floor"}.` : W.sets.link.length < 2 ? `Tap corner ${W.sets.link.length ? "another corner" : "a corner"} on the small plan, then the same corner in the photo.` : `Linked. Check that the blue outline sits on the room in the photo, then save.`;
+      h += cornerSwitch("each corner") + `<p class="winstr">Link this photo to the plan with two room corners you can see in it. ${step}</p>
       <div class="row" style="align-items:flex-start">${svgPlan}<div class="wread" id="wread" style="flex-direction:column;gap:4px">${W.linkV.map((v, i) => `<span>Corner ${v + 1} ✓</span>`).join("")}
       ${res && res.err ? `<span style="color:#ff8a73">${esc(res.err)}</span>` : ""}
       ${res && res.T ? `<span>${Math.abs(res.dp / res.dr - 1) < 0.04 ? "Distances agree" : `The corners are ${fmt(res.dp)} apart in the photo, ${fmt(res.dr)} on the plan`}</span>` : ""}</div></div>
@@ -1928,8 +1939,8 @@ function wrenderBar() {
       <p class="muted small" style="margin:0">Once linked, furniture you mark here lands where it stands, and Preview shows your layout from this angle.</p>`;
     } else if (W.tool === "room") {
       const n = set.length;
-      const nearRight = n === 4 && W.sets.room.every((_, i) => { const P = W.sets.room.map(toPlane); if (P.some(p => !p)) return false; const a = P[(i + 3) % 4], b = P[i], c = P[(i + 1) % 4]; const ang = Math.acos(clamp(V.dot(V.norm(V.sub(a, b)), V.norm(V.sub(c, b))), -1, 1)) / DEG; return Math.abs(ang - 90) < 12; });
-      h += `<p class="winstr">Tap each corner where two walls meet the floor, going around the room. ${n < 3 ? `<span class="muted">Three corners are enough for a rectangular room.</span>` : ""}
+      const nearRight = n === 4 && W.sets.room.every((_, i) => { const P = W.sets.room.map(cornerPt); if (P.some(p => !p)) return false; const a = P[(i + 3) % 4], b = P[i], c = P[(i + 1) % 4]; const ang = Math.acos(clamp(V.dot(V.norm(V.sub(a, b)), V.norm(V.sub(c, b))), -1, 1)) / DEG; return Math.abs(ang - 90) < 12; });
+      h += cornerSwitch("the corners") + `<p class="winstr">Tap each corner where two walls meet the ${W.cornerMode === "ceiling" ? "ceiling" : "floor"}, going around the room. ${n < 3 ? `<span class="muted">Three corners are enough for a rectangular room.</span>` : ""}
       <span class="muted">Open plan? Also tap where the room's floor area ends, then mark those sides as open in the Room tab.</span>
       ${W.photo.roomT ? `<span class="muted">This photo is linked, so the new outline stays lined up with your other photos.</span>` : ""}</p>
       <div class="wread" id="wread">${wreadout()}</div>
@@ -1973,6 +1984,12 @@ function wrenderBar() {
   if (far) h += `<div class="warnline">● ${esc(far)}</div>`;
   bar.innerHTML = h;
 }
+function cornerSwitch(what) {
+  const ceil = W.cornerMode === "ceiling";
+  return `<div class="row"><div class="seg">${[["floor", "Floor corners"], ["ceiling", "Ceiling corners"]].map(([k, l]) => `<button data-w="cmode" data-m="${k}" aria-pressed="${W.cornerMode === k}">${l}</button>`).join("")}</div>
+    ${ceil ? `<label class="f" style="flex-direction:row;align-items:center;gap:6px"><span class="muted">Ceiling height</span><input class="in num" id="w-ceil" value="${esc(fmtIn(S.room.height || 250))}" style="width:90px"></label>` : ""}</div>
+    ${ceil ? `<p class="muted small" style="margin:0">Tap ${what} where two walls meet the ceiling. A ceiling corner is straight above its floor corner, so the app uses the ceiling height to find it. Measure the height with a tape: 5 cm out moves a corner a few centimetres.</p>` : ""}`;
+}
 function formFields(floor) {
   const f = W.form;
   return `<div class="grid4">
@@ -2008,6 +2025,7 @@ $("#wbar").addEventListener("change", e => {
     const v = parseLen(t.value); if (t.id === "w-rw") W.ref.W = isFinite(v) ? v : 0; else W.ref.H = isFinite(v) ? v : 0;
     computeH(); wrenderBar(); wdraw();
   } else if (t.id === "w-square") W.square = t.checked;
+  else if (t.id === "w-ceil") { const v = parseLen(t.value); if (isFinite(v) && v > 150 && v < 800) { S.room.height = Math.round(v); save(); } else toast("Type the ceiling height, for example 250 or 8' 2\"."); afterPointsChange(); }
   else if (t.id === "w-fade") { W.fade = t.checked; wdraw(); }
   else if (t.id === "w-layout") { S.current = t.value; save(); wdraw(); }
 });
@@ -2027,6 +2045,7 @@ wiz.addEventListener("click", e => {
     if (!S.photos.includes(W.photo)) S.photos.unshift(W.photo);
     W.fitted = false; save(); return wrender();
   }
+  if (a === "cmode") { W.cornerMode = b.dataset.m; return afterPointsChange(); }
   if (a === "imode") { W.itemMode = b.dataset.m; W.sets.item = []; return afterPointsChange(); }
   if (a === "use-hgt") { const hv = heightAbove(W.sets.hgt[0], W.sets.hgt[1]); W.form.h = fmtIn(Math.round(hv)); W.edited.h = true; W.sets.hgt = []; W.tool = "item"; toast(`Height ${fmt(hv)} filled in`); return afterPointsChange(); }
   if (a === "link-v") { W.linkPick = +b.dataset.v; return wrenderBar(); }
@@ -2043,8 +2062,8 @@ wiz.addEventListener("click", e => {
 function keepRef() { if (W.photo) { W.photo.ref = JSON.parse(JSON.stringify(W.ref)); save(); } }
 
 function useRoom() {
-  let P = W.sets.room.map(toPlane);
-  if (P.some(p => !p)) return toast("A corner is above the floor's horizon. Move it down onto the floor.");
+  let P = W.sets.room.map(cornerPt);
+  if (P.some(p => !p)) return toast(W.cornerMode === "ceiling" ? "A corner can't be on the ceiling at this height. Check the ceiling height." : "A corner is above the floor's horizon. Move it down onto the floor.");
   let square = W.square;
   if (P.length === 3) { const [A, B, C] = P; P.push({ x: A.x + C.x - B.x, y: A.y + C.y - B.y }); square = true; }
   else if (P.length === 4) { const ok = P.every((b, i) => { const a = P[(i + 3) % 4], c = P[(i + 1) % 4]; return Math.abs(Math.acos(clamp(V.dot(V.norm(V.sub(a, b)), V.norm(V.sub(c, b))), -1, 1)) / DEG - 90) < 12; }); square = square && ok; }
