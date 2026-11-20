@@ -177,6 +177,9 @@ details.presets summary::-webkit-details-marker { display: none; }
 .op.on .op-hit { fill: var(--sel-soft); stroke: var(--sel); }
 .op-hit { fill: transparent; cursor: move; }
 .item.up rect.body { stroke-opacity: 1; }
+.open-edge { stroke: var(--ink-2); fill: none; pointer-events: none; }
+.wall-hit { stroke: transparent; fill: none; pointer-events: stroke; }
+.wall-sel { stroke: var(--sel); pointer-events: none; stroke-linecap: round; }
 .tv-screen { stroke: var(--sel); stroke-linecap: round; }
 .tv-lbl { font-weight: 500; }
 .view-line { stroke: var(--sel); fill: none; pointer-events: none; }
@@ -473,6 +476,7 @@ let editRoom = false;
 let confirmKey = null;       // which in-panel confirmation is open
 let view = { x: -60, y: -60, w: 600, h: 500 };
 let undoStack = [], redoStack = [];
+let exporting = false;       // true while drawing the plan for an image
 
 const DBN = "roomtape", STORE = "kv"; // storage key from the app's first name; kept so saved projects still load
 function idb() { return new Promise((res, rej) => { try { const r = indexedDB.open(DBN, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); }
@@ -491,6 +495,7 @@ function validateSel() {
   if (!sel) return;
   if (sel.type === "item" && !S.items.find(i => i.id === sel.id)) sel = null;
   else if (sel.type === "op" && !S.openings.find(o => o.id === sel.id)) sel = null;
+  else if (sel.type === "wall" && !(sel.i < S.room.pts.length)) sel = null;
 }
 const layout = () => S.layouts.find(l => l.id === S.current) || S.layouts[0];
 const itemById = id => S.items.find(i => i.id === id);
@@ -583,10 +588,15 @@ function wallInfo(i) {
   const pts = S.room.pts, a = pts[i], b = pts[(i + 1) % pts.length], L = V.dist(a, b), e = V.norm(V.sub(b, a));
   return { a, b, L, e, nIn: { x: -e.y, y: e.x } };
 }
+/* Open sides: edges of the room outline with no wall, for open-plan spaces. */
+const isOpen = i => !!(S.room.open && S.room.open[i]);
+const solidEdges = () => edges(S.room.pts).filter((_, i) => !isOpen(i));
 function opCenter(o) { const w = wallInfo(o.wall); return V.add(w.a, V.mul(w.e, o.t)); }
 function nearestWall(p) {
   let best = null;
+  const anySolid = S.room.pts.some((_, i) => !isOpen(i));
   S.room.pts.forEach((_, i) => {
+    if (anySolid && isOpen(i)) return;   // doors and windows only go on real walls
     const w = wallInfo(i), t = clamp(V.dot(V.sub(p, w.a), w.e), 0, w.L), q = V.add(w.a, V.mul(w.e, t)), d = V.dist(p, q);
     if (!best || d < best.d) best = { i, t, d };
   });
@@ -616,17 +626,20 @@ function problems() {
     for (const c of itemPoly(it)) { const l = V.rot(V.sub(c, bp), -bp.r * DEG); over = Math.max(over, Math.abs(l.x) - b.w / 2, Math.abs(l.y) - b.d / 2); }
     if (over > 1) add(it.id, `Sticks out ${fmt(over)} past the ${b.name}`);
   }
-  const walls = edges(S.room.pts);
+  const walls = solidEdges(), hasOpen = walls.length < S.room.pts.length;
   for (const it of S.items) {
     const P = itemPoly(it, 0.5);
-    const outside = P.some(p => !pointInPoly(p, S.room.pts)) || walls.some(([a, b]) => P.some((p, i) => segsCross(p, P[(i + 1) % 4], a, b)));
-    if (outside) add(it.id, "Goes through a wall or outside the room");
+    const crossesWall = walls.some(([a, b]) => P.some((p, i) => segsCross(p, P[(i + 1) % 4], a, b)));
+    const cornersOut = P.some(p => !pointInPoly(p, S.room.pts));
+    // across an open side is fine; only real walls and leaving the room area count
+    if (crossesWall || (cornersOut && !hasOpen)) add(it.id, "Goes through a wall or outside the room");
+    else if (hasOpen && !pointInPoly(posOf(it.id), S.room.pts)) add(it.id, "Outside the room area");
   }
   return out;
 }
 function clearances(it) {
   const p = posOf(it.id), { u, v } = axes(p.r), hw = it.w / 2, hd = it.d / 2;
-  const segs = edges(S.room.pts).map(([a, b]) => ({ a, b, kind: "wall" }));
+  const segs = solidEdges().map(([a, b]) => ({ a, b, kind: "wall" }));
   if (S.distTo === "all") for (const o of S.items) if (o.id !== it.id && !o.floor && !it.floor && !o.on && o.id !== rootOf(it).id) {
     const P = itemPoly(o); P.forEach((a, i) => segs.push({ a, b: P[(i + 1) % 4], kind: "item", name: o.name }));
   }
@@ -668,6 +681,7 @@ function snapOnBase(it, w, tol) {
 function snapItem(it, p, tol) {
   if (!S.snap) return;
   for (let i = 0; i < S.room.pts.length; i++) {
+    if (isOpen(i)) continue;
     const w = wallInfo(i), wa = Math.atan2(w.e.y, w.e.x) / DEG;
     if (Math.abs(Math.sin(2 * (p.r - wa) * DEG)) > 0.03) continue;
     const C = rectCorners(p, it.w, it.d, p.r);
@@ -726,7 +740,22 @@ function planMarkup(k) {
   if (major / k >= 7) h += `<path class="g-major" stroke-width="${k}" d="${gridPath(major)}"/>`;
   // room
   const rd = "M" + pts.map(p => `${f(p.x)} ${f(p.y)}`).join("L") + "Z";
-  h += `<path class="wall" stroke-width="24" d="${rd}"/><path class="floor" d="${rd}"/>`;
+  const nW = pts.length, openIdx = pts.findIndex((_, i) => isOpen(i));
+  if (openIdx < 0) h += `<path class="wall" stroke-width="24" d="${rd}"/>`;
+  else {   // draw runs of real walls, starting just after an open side
+    let d = "", run = [];
+    const flush = () => { if (run.length) d += "M" + run.map(q => `${f(q.x)} ${f(q.y)}`).join("L"); run = []; };
+    for (let j = 1; j <= nW; j++) { const i = (openIdx + j) % nW; if (isOpen(i)) flush(); else { if (!run.length) run.push(pts[i]); run.push(pts[(i + 1) % nW]); } }
+    flush();
+    if (d) h += `<path class="wall" stroke-width="24" stroke-linecap="butt" d="${d}"/>`;
+  }
+  h += `<path class="floor" d="${rd}"/>`;
+  pts.forEach((a, i) => {
+    const b = pts[(i + 1) % nW];
+    if (isOpen(i)) h += `<line class="open-edge" stroke-width="${2 * k}" stroke-dasharray="${9 * k} ${6 * k}" x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(b.x)}" y2="${f(b.y)}"/>`;
+    if (!exporting) h += `<line class="wall-hit" data-hit="wall" data-i="${i}" stroke-width="${Math.max(24, 16 * k)}" x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(b.x)}" y2="${f(b.y)}"/>`;
+    if (sel && sel.type === "wall" && sel.i === i) h += `<line class="wall-sel" stroke-width="${4 * k}" x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(b.x)}" y2="${f(b.y)}"/>`;
+  });
   // openings
   for (const o of S.openings) {
     const w = wallInfo(o.wall), c = opCenter(o), hw = o.w / 2, out = V.mul(w.nIn, -1);
@@ -754,7 +783,8 @@ function planMarkup(k) {
   pts.forEach((_, i) => {
     const w = wallInfo(i), m = V.mid(w.a, w.b), p = V.add(m, V.mul(w.nIn, -(12 + 14 * k)));
     let ang = Math.atan2(w.e.y, w.e.x) / DEG; if (normDeg(ang) > 90 && normDeg(ang) <= 270) ang += 180;
-    if (w.L / k > 40) h += `<text class="wlabel" font-size="${fs}" transform="translate(${f(p.x)} ${f(p.y)}) rotate(${f(ang)})">${esc(fmt(w.L))}</text>`;
+    const txt = `${!exporting && tab === "room" ? `Wall ${i + 1} · ` : ""}${isOpen(i) ? "open · " : ""}${fmt(w.L)}`;
+    if (w.L / k > 40) h += `<text class="wlabel" font-size="${fs}" transform="translate(${f(p.x)} ${f(p.y)}) rotate(${f(ang)})">${esc(txt)}</text>`;
   });
   // furniture
   const probs = problems();
@@ -857,12 +887,16 @@ svg.addEventListener("pointerdown", e => {
   } else if (kind === "op") {
     sel = { type: "op", id: t.dataset.id }; tab = "room"; renderPanel(); renderPlan();
     drag = { type: "op", id: t.dataset.id, moved: false };
+  } else if (kind === "wall") {
+    drag = { type: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false, wall: +t.dataset.i };
   } else if (kind === "v") {
     drag = { type: "v", i: +t.dataset.i, moved: false, old: S.room.pts.map(q => ({ ...q })) };
   } else if (kind === "mid") {
     commit();
     const old = S.room.pts.map(q => ({ ...q })), i = +t.dataset.i, a = S.room.pts[i], b = S.room.pts[(i + 1) % S.room.pts.length];
+    const wasOpen = isOpen(i);
     S.room.pts.splice(i + 1, 0, roundPt(V.mid(a, b)));
+    if (S.room.open) S.room.open.splice(i + 1, 0, wasOpen);
     reattachOpenings(old);
     drag = { type: "v", i: i + 1, moved: true, committed: true, old: S.room.pts.map(q => ({ ...q })) };
     renderPlan();
@@ -919,7 +953,8 @@ function endPtr(e) {
   ptrs.delete(e.pointerId);
   if (!drag) return;
   if (drag.type === "pinch") { if (ptrs.size === 0) drag = null; return; }
-  if (drag.type === "pan" && !drag.moved && sel) { sel = null; renderPlan(); renderPanel(); }
+  if (drag.type === "pan" && !drag.moved && drag.wall !== undefined) { sel = { type: "wall", i: drag.wall }; tab = "room"; renderPlan(); renderPanel(); expandSheet(); }
+  else if (drag.type === "pan" && !drag.moved && sel) { sel = null; renderPlan(); renderPanel(); }
   if (drag.moved && drag.type === "item") {   // dragged off its base: it now stands on the floor
     const it = itemById(drag.id), b = baseOf(it);
     if (b) {
@@ -936,7 +971,10 @@ svg.addEventListener("dblclick", e => {
   const t = e.target.closest("[data-hit='v']");
   if (!t || S.room.pts.length <= 3) return;
   commit(); const old = S.room.pts.map(q => ({ ...q }));
-  S.room.pts.splice(+t.dataset.i, 1); reattachOpenings(old); renderAll(); save();
+  const j = +t.dataset.i, n = S.room.pts.length, merged = isOpen((j - 1 + n) % n) && isOpen(j);
+  S.room.pts.splice(j, 1);
+  if (S.room.open) { S.room.open.splice(j, 1); S.room.open[(j - 1 + n - 1) % (n - 1)] = merged; }
+  reattachOpenings(old); renderAll(); save();
 });
 svg.addEventListener("wheel", e => {
   e.preventDefault();
@@ -1101,6 +1139,12 @@ function panelRoom() {
     ${editRoom ? `<p class="tip">Drag a corner to move it. Drag a small dot in the middle of a wall to add a corner. Double-click or double-tap a corner to remove it.</p>` : ""}
     ${!isRect(pts) ? `<button class="btn sm" data-act="make-rect">Reset to a rectangle</button>` : ""}
   </div>
+  <div class="sec"><h3>Walls</h3>
+    <div class="list">${pts.map((_, i) => `<div class="li" aria-current="${sel && sel.type === "wall" && sel.i === i}">
+      <button class="t" data-act="select-wall" data-i="${i}" style="border:0;background:none;text-align:left;padding:0"><b>Wall ${i + 1}</b><span>${esc(fmt(wallInfo(i).L))}</span></button>
+      <div class="seg"><button data-act="wall-open" data-i="${i}" data-v="0" aria-pressed="${!isOpen(i)}">Wall</button><button data-act="wall-open" data-i="${i}" data-v="1" aria-pressed="${isOpen(i)}">Open</button></div></div>`).join("")}</div>
+    <p class="tip">In an open-plan space, mark the sides with no wall as <b>Open</b>. They're drawn dashed, furniture doesn't snap to them and wall distances ignore them. Tap a wall on the plan to find it here. Add corners with <b>Edit corners</b> to mark where the room's area ends.</p>
+  </div>
   <div class="sec"><h3>Doors and windows</h3>
     <div class="grid2"><button class="btn" data-act="add-door">Add door</button><button class="btn" data-act="add-window">Add window</button></div>
   </div>
@@ -1117,13 +1161,17 @@ function panelLayouts() {
     ${confirmKey === "layout" ? `<div class="confirm"><span>Delete “${esc(L.name)}”? The furniture stays in your other layouts.</span><div class="row"><button class="btn sm danger" data-act="del-layout">Delete layout</button><button class="btn sm" data-act="cancel">Keep it</button></div></div>` : ""}
   </div>
   <p class="tip">Every layout uses the same room and furniture. Only positions and angles differ, so you can flip between ideas.</p></div>`;
+  const linked = S.photos.filter(q => q.kind === "floor" && q.roomT);
+  h += `<div class="sec"><h3>See it in your photos</h3>${linked.length
+    ? `<div class="chips">${linked.map((q, i) => `<button class="li" data-act="preview-photo" data-id="${q.id}" style="width:auto;border:1px solid var(--line);border-radius:var(--r)"><span class="thumb" style="background-image:url(${q.thumb || q.src})"></span><span class="t"><b>View ${i + 1}</b></span></button>`).join("")}</div>`
+    : ""}<p class="tip">${linked.length ? "Opens the photo with this layout drawn in, from where the photo was taken." : "Room photos you measure or link to the plan show up here. Take photos from different corners to see a layout from each angle."}</p></div>`;
   return h;
 }
 function panelProject() {
   let h = `<div class="sec"><h3>Units</h3><div class="seg"><button data-act="units" data-v="metric" aria-pressed="${S.units === "metric"}">Metric (cm)</button><button data-act="units" data-v="imperial" aria-pressed="${S.units === "imperial"}">Imperial (ft, in)</button></div></div>`;
   h += `<div class="sec"><h3>Photos · ${S.photos.length}</h3>`;
   if (!S.photos.length) h += `<p class="tip">Photos you measure are kept here so you can mark more furniture in them later.</p>`;
-  else h += `<div class="list">${S.photos.map(p => `<div class="li"><span class="thumb" style="background-image:url(${p.thumb || p.src})"></span><span class="t"><b>${p.kind === "floor" ? "Room photo" : "Furniture photo"}</b><span>${esc(new Date(p.created).toLocaleDateString())}</span></span><button class="btn sm" data-act="open-photo" data-id="${p.id}">Open</button><button class="btn sm icon danger" data-act="del-photo" data-id="${p.id}" aria-label="Delete photo">✕</button></div>`).join("")}</div>`;
+  else h += `<div class="list">${S.photos.map(p => `<div class="li"><span class="thumb" style="background-image:url(${p.thumb || p.src})"></span><span class="t"><b>${p.kind === "floor" ? (p.roomT ? "Room photo · linked" : "Room photo") : "Furniture photo"}</b><span>${esc(new Date(p.created).toLocaleDateString())}</span></span><button class="btn sm" data-act="open-photo" data-id="${p.id}">Open</button><button class="btn sm icon danger" data-act="del-photo" data-id="${p.id}" aria-label="Delete photo">✕</button></div>`).join("")}</div>`;
   h += `</div><div class="sec"><h3>Save and share</h3>
     <div class="grid2"><button class="btn" data-act="export">Export file</button><button class="btn" data-act="import">Import file</button></div>
     <button class="btn" data-act="save-image">Save the plan as an image</button>
@@ -1171,17 +1219,26 @@ pbody.addEventListener("click", e => {
     case "showView": S.showView = b.checked; renderPlan(); save(); break;
     case "distTo": S.distTo = b.dataset.v; renderAll(); save(); break;
     case "edit-room": editRoom = !editRoom; if (editRoom) sel = null; renderAll(); break;
-    case "make-rect": { commit(); const bb = roomBox(), old = S.room.pts; S.room.pts = [{ x: 0, y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: Math.round(bb.y1 - bb.y0) }, { x: 0, y: Math.round(bb.y1 - bb.y0) }]; reattachOpenings(old); renderAll(); fit(); save(); break; }
+    case "make-rect": { commit(); const bb = roomBox(), old = S.room.pts; S.room.pts = [{ x: 0, y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: Math.round(bb.y1 - bb.y0) }, { x: 0, y: Math.round(bb.y1 - bb.y0) }]; S.room.open = []; reattachOpenings(old); renderAll(); fit(); save(); break; }
     case "add-door": case "add-window": {
       commit();
       let best = { len: -1, wall: 0, t: 0 };
       S.room.pts.forEach((_, i) => {
+        if (isOpen(i)) return;
         const L = wallInfo(i).L, taken = S.openings.filter(o => o.wall === i).map(o => [o.t - o.w / 2, o.t + o.w / 2]).sort((x, y) => x[0] - y[0]);
         let at = 0;
         for (const [s0, s1] of [...taken, [L, L]]) { if (s0 - at > best.len) best = { len: s0 - at, wall: i, t: (at + s0) / 2 }; at = Math.max(at, s1); }
       });
       const isDoor = a === "add-door", o = { id: uid(), type: isDoor ? "door" : "window", wall: best.wall, t: best.t, w: Math.min(isDoor ? 85 : 120, Math.max(40, best.len - 10)), flip: 0 };
       clampOp(o); S.openings.push(o); sel = { type: "op", id: o.id }; renderAll(); save(); break;
+    }
+    case "select-wall": sel = { type: "wall", i: +b.dataset.i }; renderPlan(); renderPanel(); break;
+    case "wall-open": {
+      const i = +b.dataset.i, v = b.dataset.v === "1"; if (isOpen(i) === v) break;
+      commit(); S.room.open = S.room.pts.map((_, j) => j === i ? v : isOpen(j));
+      const gone = v ? S.openings.filter(o => o.wall === i) : [];
+      if (gone.length) { S.openings = S.openings.filter(o => o.wall !== i); toast(`Removed ${gone.length === 1 ? "the door or window" : gone.length + " doors and windows"} on that side`); }
+      sel = { type: "wall", i }; renderAll(); save(); break;
     }
     case "flip-h": commit(); op.flip = (op.flip || 0) ^ 1; renderAll(); save(); break;
     case "flip-io": commit(); op.flip = (op.flip || 0) ^ 2; renderAll(); save(); break;
@@ -1194,6 +1251,7 @@ pbody.addEventListener("click", e => {
     case "cancel": confirmKey = null; renderPanel(); break;
     case "units": S.units = b.dataset.v; renderAll(); save(); break;
     case "open-photo": openWizard(null, { photoId: b.dataset.id }); break;
+    case "preview-photo": openWizard(null, { photoId: b.dataset.id, tool: "view" }); break;
     case "del-photo": S.photos = S.photos.filter(p => p.id !== b.dataset.id); renderPanel(); save(); break;
     case "export": exportProject(); break;
     case "save-image": savePlanImage(); break;
@@ -1240,7 +1298,7 @@ pbody.addEventListener("change", e => {
     renderAll(); save();
   } else if (t.dataset.l === "name") { commit(); layout().name = t.value.trim() || "Untitled layout"; renderAll(); save(); }
 });
-document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { tab = t.dataset.tab; confirmKey = null; renderPanel(); expandSheet(); }));
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { tab = t.dataset.tab; confirmKey = null; renderPanel(); renderPlan(); expandSheet(); }));
 $("#b-sheet").addEventListener("click", () => { $("#panel").classList.toggle("collapsed"); setTimeout(() => renderPlan(), 0); });
 function expandSheet() { if ($("#panel").classList.contains("collapsed")) { $("#panel").classList.remove("collapsed"); setTimeout(renderPlan, 0); } }
 $("#b-undo").onclick = undo; $("#b-redo").onclick = redo;
@@ -1307,8 +1365,8 @@ async function savePlanImage() {
     const pw = vw * scale, ph = vh * scale;
     // draw the plan for a fixed view with nothing selected
     const keep = { view: { ...view }, sel, editRoom };
-    view = { x: b.x0 - pad, y: b.y0 - pad, w: vw, h: vh }; sel = null; editRoom = false;
-    let markup; try { markup = planMarkup(1 / scale); } finally { view = keep.view; sel = keep.sel; editRoom = keep.editRoom; }
+    view = { x: b.x0 - pad, y: b.y0 - pad, w: vw, h: vh }; sel = null; editRoom = false; exporting = true;
+    let markup; try { markup = planMarkup(1 / scale); } finally { view = keep.view; sel = keep.sel; editRoom = keep.editRoom; exporting = false; }
     const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw * R}" height="${ph * R}" viewBox="${b.x0 - pad} ${b.y0 - pad} ${vw} ${vh}"><style>${planCss()}</style>` +
       `<rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${vw}" height="${vh}" fill="${LIGHT.paper}"/>${resolveVars(markup)}</svg>`;
     const img = await loadSvgImage(svgStr);
@@ -1388,12 +1446,13 @@ function toast(msg) { const t = $("#toast"); t.style.top = wiz.hidden ? "" : "ca
    Photo measuring
    ================================================================ */
 const wiz = $("#wiz"), cv = $("#wcv"), ctx = cv.getContext("2d"), loupe = $("#loupe"), lctx = loupe.getContext("2d");
-const LIMIT = { ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2 };
+const LIMIT = { ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2, link: 2, view: 0 };
 let W = null; // wizard state
 function newWiz(kind) {
   return { kind, step: kind ? "pick" : "choose", photo: null, img: null, v: { s: 1, tx: 0, ty: 0 },
     ref: { type: "a4", W: 21, H: 29.7, pts: [] }, H: null, Hsign: 1,
-    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [] },
+    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [], link: [], view: [] },
+    linkV: [], linkPick: null, fade: false, Hi: null, cam: null,
     square: true, form: { name: "", w: "", d: "", h: "" }, edited: {}, target: null, active: null };
 }
 function openWizard(kind, opts = {}) {
@@ -1402,7 +1461,7 @@ function openWizard(kind, opts = {}) {
   wiz.hidden = false;
   if (opts.photoId) {
     const p = S.photos.find(q => q.id === opts.photoId);
-    W.kind = p.kind; W.tool = p.kind === "face" ? "width" : "room"; W.photo = p; W.step = "loading";
+    W.kind = p.kind; W.tool = p.kind === "face" ? "width" : opts.tool || (p.roomT ? "view" : "room"); W.photo = p; W.step = "loading";
     W.ref = JSON.parse(JSON.stringify(p.ref));
     loadImg(p.src).then(img => { W.img = img; computeH(); W.step = "measure"; wsize(); wfit(); wrender(); });
   }
@@ -1430,8 +1489,56 @@ function computeH() {
   if (W.ref.pts.length !== 4 || !(W.ref.W > 0 && W.ref.H > 0)) return;
   const dst = [{ x: 0, y: 0 }, { x: W.ref.W, y: 0 }, { x: W.ref.W, y: W.ref.H }, { x: 0, y: W.ref.H }];
   W.H = homography(W.ref.pts, dst);
+  W.Hi = homography(dst, W.ref.pts);
+  W.cam = W.Hi && W.img ? estimateCamera(W.Hi, W.img.width, W.img.height) : null;
   if (W.H) { const c = W.ref.pts.reduce((s, p) => ({ x: s.x + p.x / 4, y: s.y + p.y / 4 }), { x: 0, y: 0 }); W.Hsign = Math.sign(applyH(W.H, c).w) || 1; }
 }
+/* Camera from the floor homography (plane -> image), assuming square pixels and the principal
+   point at the image centre: H ~ K [r1 r2 t]. The focal length comes from r1 being perpendicular
+   to r2; if that is unreliable (a photo taken nearly straight down) a typical phone value is used. */
+function estimateCamera(H, w, h) {
+  const cx = w / 2, cy = h / 2, col = j => [H[j] - cx * H[6 + j], H[3 + j] - cy * H[6 + j], H[6 + j]];
+  const h1 = col(0), h2 = col(1), h3 = col(2), big = Math.max(w, h);
+  const f2 = -(h1[0] * h2[0] + h1[1] * h2[1]) / (h1[2] * h2[2]);
+  let f = f2 > 0 ? Math.sqrt(f2) : NaN;
+  if (!(f > 0.3 * big && f < 4 * big)) f = 0.8 * big;
+  const ki = v => [v[0] / f, v[1] / f, v[2]], a1 = ki(h1), a2 = ki(h2), a3 = ki(h3);
+  let lam = 2 / (Math.hypot(...a1) + Math.hypot(...a2));
+  if (a3[2] * lam < 0) lam = -lam;                       // the floor must be in front of the camera
+  const r1 = a1.map(x => x * lam), r2 = a2.map(x => x * lam), t = a3.map(x => x * lam);
+  const stretch = Math.abs(Math.log(Math.hypot(...a1) / Math.hypot(...a2)));   // 0 when the floor scales the same both ways
+  let r3 = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
+  if (-(r3[0] * t[0] + r3[1] * t[1] + r3[2] * t[2]) < 0) r3 = r3.map(x => -x);   // "up" points towards the camera
+  return { f, cx, cy, r1, r2, r3, t, stretch };
+}
+/* Which way round a rectangular reference was tapped: its long and short sides look alike in a photo,
+   but only the right pairing gives a floor that scales equally in both directions. */
+function bestRefOrder(pts, Wd, Hd, imgW, imgH) {
+  if (Math.abs(Wd - Hd) < 0.5) return pts;
+  const dst = [{ x: 0, y: 0 }, { x: Wd, y: 0 }, { x: Wd, y: Hd }, { x: 0, y: Hd }];
+  const score = q => { const Hi = homography(dst, q); return Hi ? estimateCamera(Hi, imgW, imgH).stretch : Infinity; };
+  const alt = pts.slice(1).concat(pts.slice(0, 1));
+  return score(alt) < score(pts) * 0.7 ? alt : pts;
+}
+function project(cam, X, Y, Z) {
+  const c = i => cam.r1[i] * X + cam.r2[i] * Y + cam.r3[i] * Z + cam.t[i], z = c(2);
+  return z > 1 ? { x: cam.f * c(0) / z + cam.cx, y: cam.f * c(1) / z + cam.cy, z } : null;
+}
+const roomToPlane = (r, T) => V.rot({ x: r.x + T.ox, y: r.y + T.oy }, T.a);
+/* where this photo sits on the plan, from two room corners tapped in it */
+function linkResult() {
+  if (W.sets.link.length < 2) return null;
+  const P = W.sets.link.map(toPlane);
+  if (P.some(q => !q)) return { err: "A point is above the floor's horizon. Move it onto the floor." };
+  const R = W.linkV.map(v => S.room.pts[v]);
+  if (R.some(q => !q)) return null;
+  const dp = V.dist(P[0], P[1]), dr = V.dist(R[0], R[1]);
+  if (dp < 1 || dr < 1) return { err: "Choose two different corners." };
+  const th = Math.atan2(R[1].y - R[0].y, R[1].x - R[0].x) - Math.atan2(P[1].y - P[0].y, P[1].x - P[0].x);
+  const t = V.sub(V.mid(R[0], R[1]), V.rot(V.mid(P[0], P[1]), th));
+  return { T: { a: -th, ox: -t.x, oy: -t.y }, dp, dr };
+}
+const activeT = () => (W.tool === "link" && linkResult()?.T) || W.photo?.roomT || null;
 function toPlane(p) { if (!W.H) return null; const q = applyH(W.H, p); return Math.sign(q.w) === W.Hsign ? q : null; }
 function pd(a, b) { const A = toPlane(a), B = toPlane(b); return A && B ? V.dist(A, B) : NaN; }
 function activeKey() { return W.step === "ref" ? "ref" : W.tool; }
@@ -1454,6 +1561,7 @@ function wdraw() {
   ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, r.width, r.height);
   ctx.save(); ctx.translate(W.v.tx, W.v.ty); ctx.scale(W.v.s, W.v.s); ctx.drawImage(W.img, 0, 0); ctx.restore();
   const Y = "#f5c02a", C = "#45d0db", P = "#ff8fb1", G = "#9be27a";
+  if (W.step === "measure" && W.kind === "floor" && W.Hi) drawPlanOnPhoto();
   // reference
   const R = W.ref.pts.map(scr);
   if (R.length) {
@@ -1496,6 +1604,56 @@ function wdraw() {
       s.forEach(p => dotAt(p, col, "", W.tool === k ? 1 : 0.5));
     });
   }
+}
+const BOX_COLORS = ["#4fa3e0", "#e0a84f", "#6cc070", "#e07a9a", "#9a86e0", "#4fc0b5"];
+/* The room outline, and in Preview the furniture of the current layout as 3D boxes, drawn into the photo. */
+function drawPlanOnPhoto() {
+  const T = activeT(); if (!T) return;
+  const cam = W.cam, view = W.tool === "view";
+  if (!cam) return;
+  const toImg = (r, z = 0) => { const q = roomToPlane(r, T); return project(cam, q.x, q.y, z); };
+  ctx.save(); ctx.translate(W.v.tx, W.v.ty); ctx.scale(W.v.s, W.v.s);
+  const lw = 1 / W.v.s;
+  if (view && W.fade) { ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(0, 0, W.img.width, W.img.height); }
+  // room outline on the floor
+  const pts = S.room.pts;
+  pts.forEach((a, i) => {
+    const A = toImg(a), B = toImg(pts[(i + 1) % pts.length]); if (!A || !B) return;
+    ctx.strokeStyle = "#45d0db"; ctx.lineWidth = 3 * lw; ctx.setLineDash(isOpen(i) ? [10 * lw, 7 * lw] : []);
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+  if (view && cam) {
+    const faces = [];
+    for (const it of S.items) {
+      const p = posOf(it.id), top = it.floor ? 0.5 : topOf(it), bot = it.floor ? 0 : top - (it.h || 0);
+      const C4 = rectCorners(p, it.w, it.d, p.r).map(c => roomToPlane(c, T));
+      const B4 = C4.map(c => project(cam, c.x, c.y, Math.max(bot, 0.01))), T4 = C4.map(c => project(cam, c.x, c.y, Math.max(top, 0.01)));
+      if (B4.some(q => !q) || T4.some(q => !q)) continue;
+      const col = it.tv ? "#1b1f22" : BOX_COLORS[it.color % 6], flat = top - bot < 2;
+      const add = (q, kind) => faces.push({ q, z: q.reduce((s2, v) => s2 + v.z, 0) / q.length, col, kind, it });
+      add(B4, "bottom");
+      if (!flat) { for (let i = 0; i < 4; i++) add([B4[i], B4[(i + 1) % 4], T4[(i + 1) % 4], T4[i]], "side"); add(T4, "top"); }
+    }
+    faces.sort((a, b) => b.z - a.z);
+    for (const fc of faces) {
+      ctx.beginPath(); fc.q.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.closePath();
+      ctx.globalAlpha = fc.it.tv ? 0.8 : fc.kind === "bottom" ? 0.18 : 0.32; ctx.fillStyle = fc.col; ctx.fill();
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = fc.it.tv ? "#45d0db" : fc.col; ctx.lineWidth = 2 * lw; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // names above each piece
+    ctx.font = `600 ${12 * lw}px 'IBM Plex Sans', system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    for (const it of S.items) {
+      if (it.floor) continue;
+      const p = posOf(it.id), q = roomToPlane(p, T), v = project(cam, q.x, q.y, topOf(it) + 4);
+      if (!v) continue;
+      const w = ctx.measureText(it.name).width + 10 * lw;
+      ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(v.x - w / 2, v.y - 17 * lw, w, 17 * lw);
+      ctx.fillStyle = "#fff"; ctx.fillText(it.name, v.x, v.y - 2 * lw);
+    }
+  }
+  ctx.restore();
 }
 function dotAt(p, col, txt, alpha) {
   ctx.globalAlpha = alpha;
@@ -1565,10 +1723,19 @@ function wEnd(e) {
   if (wd.type === "pinch") { if (!wptr.size) wd = null; return; }
   if ((wd.type === "tap" || wd.type === "pt") && !wd.moved) {
     const ip = imgPt(local(e)), key = activeKey(), set = setOf(key);
-    if (ip.x >= 0 && ip.y >= 0 && ip.x <= W.img.width && ip.y <= W.img.height) {
+    if (key === "view") { /* preview: nothing to tap */ }
+    else if (key === "link" && wd.type === "tap" && ip.x >= 0 && ip.y >= 0 && ip.x <= W.img.width && ip.y <= W.img.height) {
+      if (W.linkPick === null) toast("First choose the matching corner on the small plan below.");
+      else {
+        const i = W.linkV.indexOf(W.linkPick);
+        if (i >= 0) set[i] = ip; else if (set.length < 2) { set.push(ip); W.linkV.push(W.linkPick); } else { set.shift(); W.linkV.shift(); set.push(ip); W.linkV.push(W.linkPick); }
+        W.linkPick = null; afterPointsChange();
+      }
+    }
+    else if (ip.x >= 0 && ip.y >= 0 && ip.x <= W.img.width && ip.y <= W.img.height) {
       if (set.length < LIMIT[key]) {
         set.push(ip);
-        if (key === "ref" && set.length === 4) { W.ref.pts = orderQuad(set); computeH(); }
+        if (key === "ref" && set.length === 4) { W.ref.pts = bestRefOrder(orderQuad(set), W.ref.W, W.ref.H, W.img.width, W.img.height); computeH(); }
         afterPointsChange();
       } else if (wd.type === "tap") toast("All points are placed. Drag one to adjust it, or press Clear.");
     }
@@ -1666,13 +1833,35 @@ function wrenderBar() {
     </div>
     ${n === 4 ? `<p class="muted small" style="margin:0">Side A is labelled on the photo. If its length is wrong, swap the sides.</p>` : ""}`;
   } else if (W.kind === "floor") {
-    const tools = [["room", "Room corners"], ["item", "Furniture"], ["dist", "Distance"]];
-    h += `<div class="seg">${tools.map(([k, l]) => `<button data-w="tool" data-t="${k}" aria-pressed="${W.tool === k}">${l}</button>`).join("")}</div>`;
+    const linked = !!W.photo.roomT;
+    const tools = [...(linked ? [["view", "Preview"]] : []), ["room", "Room corners"], ["item", "Furniture"], ["dist", "Distance"], ["link", linked ? "Relink" : "Link to plan"]];
+    h += `<div class="seg" style="flex-wrap:wrap">${tools.map(([k, l]) => `<button data-w="tool" data-t="${k}" aria-pressed="${W.tool === k}">${l}</button>`).join("")}</div>`;
     const set = W.sets[W.tool];
-    if (W.tool === "room") {
+    if (W.tool === "view") {
+      h += `<p class="winstr">Your layout drawn into this photo from where it was taken. Pieces with a height are boxes; the rest are outlines on the floor.</p>
+      <div class="row"><select class="in" id="w-layout" style="width:auto;flex:1 1 200px">${S.layouts.map(l => `<option value="${l.id}" ${l.id === S.current ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select>
+      <label class="toggle"><input type="checkbox" id="w-fade" ${W.fade ? "checked" : ""}> Fade the photo</label></div>
+      <p class="muted small" style="margin:0">This is worked out from one photo, so boxes can lean or drift a little, most near the edges of the picture. Move furniture on the plan, then come back to look again.</p>`;
+    } else if (W.tool === "link") {
+      const res = linkResult(), pts = S.room.pts, b = roomBox(), pad = 40, vw = b.x1 - b.x0 + 2 * pad, vh = b.y1 - b.y0 + 2 * pad, k2 = Math.max(vw / 320, vh / 170);
+      const svgPlan = `<svg viewBox="${b.x0 - pad} ${b.y0 - pad} ${vw} ${vh}" style="width:100%;max-width:320px;max-height:170px;display:block;background:#0d1112;border-radius:8px" aria-label="Room corners">
+        <path d="M${pts.map(q => `${q.x} ${q.y}`).join("L")}Z" fill="#1d272a" stroke="#cdd8d5" stroke-width="${3 * k2}"/>
+        ${pts.map((q, i) => { const pi = W.linkV.indexOf(i), on = W.linkPick === i; return `<g data-w="link-v" data-v="${i}" style="cursor:pointer"><circle cx="${q.x}" cy="${q.y}" r="${14 * k2}" fill="${on ? "#f2b705" : pi >= 0 ? "#45d0db" : "#20292c"}" stroke="#e8eeec" stroke-width="${2 * k2}"/><text x="${q.x}" y="${q.y}" fill="${on || pi >= 0 ? "#111" : "#e8eeec"}" font-size="${13 * k2}" font-family="IBM Plex Sans, sans-serif" font-weight="600" text-anchor="middle" dominant-baseline="central" pointer-events="none">${i + 1}</text></g>`; }).join("")}
+      </svg>`;
+      const step = W.linkPick !== null ? `Now tap corner <b>${W.linkPick + 1}</b> in the photo, where the walls meet the floor.` : W.sets.link.length < 2 ? `Tap corner ${W.sets.link.length ? "another corner" : "a corner"} on the small plan, then the same corner in the photo.` : `Linked. Check that the blue outline sits on the room in the photo, then save.`;
+      h += `<p class="winstr">Link this photo to the plan with two room corners you can see in it. ${step}</p>
+      <div class="row" style="align-items:flex-start">${svgPlan}<div class="wread" id="wread" style="flex-direction:column;gap:4px">${W.linkV.map((v, i) => `<span>Corner ${v + 1} ✓</span>`).join("")}
+      ${res && res.err ? `<span style="color:#ff8a73">${esc(res.err)}</span>` : ""}
+      ${res && res.T ? `<span>${Math.abs(res.dp / res.dr - 1) < 0.04 ? "Distances agree" : `The corners are ${fmt(res.dp)} apart in the photo, ${fmt(res.dr)} on the plan`}</span>` : ""}</div></div>
+      <div class="row"><button class="btn sm" data-w="clear-link" ${W.sets.link.length ? "" : "disabled"}>Clear</button>
+      <button class="btn tape" data-w="save-link" ${res && res.T ? "" : "disabled"} style="margin-left:auto">Save link</button></div>
+      <p class="muted small" style="margin:0">Once linked, furniture you mark here lands where it stands, and Preview shows your layout from this angle.</p>`;
+    } else if (W.tool === "room") {
       const n = set.length;
       const nearRight = n === 4 && W.sets.room.every((_, i) => { const P = W.sets.room.map(toPlane); if (P.some(p => !p)) return false; const a = P[(i + 3) % 4], b = P[i], c = P[(i + 1) % 4]; const ang = Math.acos(clamp(V.dot(V.norm(V.sub(a, b)), V.norm(V.sub(c, b))), -1, 1)) / DEG; return Math.abs(ang - 90) < 12; });
-      h += `<p class="winstr">Tap each corner where two walls meet the floor, going around the room. ${n < 3 ? `<span class="muted">Three corners are enough for a rectangular room.</span>` : ""}</p>
+      h += `<p class="winstr">Tap each corner where two walls meet the floor, going around the room. ${n < 3 ? `<span class="muted">Three corners are enough for a rectangular room.</span>` : ""}
+      <span class="muted">Open plan? Also tap where the room's floor area ends, then mark those sides as open in the Room tab.</span>
+      ${W.photo.roomT ? `<span class="muted">This photo is linked, so the new outline stays lined up with your other photos.</span>` : ""}</p>
       <div class="wread" id="wread">${wreadout()}</div>
       ${nearRight ? `<label class="toggle"><input type="checkbox" id="w-square" ${W.square ? "checked" : ""}> Square up the corners (walls meet at 90°)</label>` : ""}
       <div class="row"><button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button><button class="btn sm" data-w="clear" ${n ? "" : "disabled"}>Clear</button>
@@ -1683,7 +1872,7 @@ function wrenderBar() {
       ${formFields(true)}
       <div class="row"><button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button>
       <button class="btn tape" data-w="add-item" ${n >= 2 ? "" : "disabled"} style="margin-left:auto">Add to plan</button></div>
-      ${W.photo && W.photo.roomT ? `<p class="muted small" style="margin:0">It goes on the plan where it stands in this photo.</p>` : `<p class="muted small" style="margin:0">Mark the room corners in this photo first and the furniture lands where it stands now.</p>`}`;
+      ${W.photo && W.photo.roomT ? `<p class="muted small" style="margin:0">It goes on the plan where it stands in this photo.</p>` : `<p class="muted small" style="margin:0">Mark the room corners in this photo, or link it to the plan, and the furniture lands where it stands now.</p>`}`;
     } else {
       h += `<p class="winstr">Tap two points on the floor to measure between them.</p><div class="wread" id="wread">${wreadout()}</div>
       <div class="row"><button class="btn sm" data-w="clear" ${set.length ? "" : "disabled"}>Clear</button></div>`;
@@ -1730,6 +1919,8 @@ $("#wbar").addEventListener("change", e => {
     const v = parseLen(t.value); if (t.id === "w-rw") W.ref.W = isFinite(v) ? v : 0; else W.ref.H = isFinite(v) ? v : 0;
     computeH(); wrenderBar(); wdraw();
   } else if (t.id === "w-square") W.square = t.checked;
+  else if (t.id === "w-fade") { W.fade = t.checked; wdraw(); }
+  else if (t.id === "w-layout") { S.current = t.value; save(); wdraw(); }
 });
 wiz.addEventListener("click", e => {
   const b = e.target.closest("[data-w]"); if (!b || !W) return;
@@ -1742,9 +1933,17 @@ wiz.addEventListener("click", e => {
   if (a === "tool") { W.tool = b.dataset.t; return afterPointsChange(); }
   if (a === "next") {
     W.step = "measure";
+    if (W.kind === "floor" && !W.photo.roomT && S.photos.some(q => q.roomT && q !== W.photo)) W.tool = "link";
     W.photo.ref = JSON.parse(JSON.stringify(W.ref));
     if (!S.photos.includes(W.photo)) S.photos.unshift(W.photo);
     W.fitted = false; save(); return wrender();
+  }
+  if (a === "link-v") { W.linkPick = +b.dataset.v; return wrenderBar(); }
+  if (a === "clear-link") { W.sets.link = []; W.linkV = []; W.linkPick = null; return afterPointsChange(); }
+  if (a === "save-link") {
+    const res = linkResult(); if (!res || !res.T) return;
+    W.photo.roomT = res.T; keepRef(); W.sets.link = []; W.linkV = []; W.tool = "view";
+    toast("Photo linked. Preview shows your layout from this angle."); return afterPointsChange();
   }
   if (a === "use-room") return useRoom();
   if (a === "add-item") return addFromFloor();
@@ -1759,6 +1958,13 @@ function useRoom() {
   if (P.length === 3) { const [A, B, C] = P; P.push({ x: A.x + C.x - B.x, y: A.y + C.y - B.y }); square = true; }
   else if (P.length === 4) { const ok = P.every((b, i) => { const a = P[(i + 3) % 4], c = P[(i + 1) % 4]; return Math.abs(Math.acos(clamp(V.dot(V.norm(V.sub(a, b)), V.norm(V.sub(c, b))), -1, 1)) / DEG - 90) < 12; }); square = square && ok; }
   else square = false;
+  if (W.photo.roomT) {   // linked photo: new outline in the same frame, so other links stay valid
+    let R = P.map(q => roundPt(planeToRoom(q, W.photo.roomT)));
+    if (polyArea(R) < 0) R.reverse();
+    if (Math.abs(polyArea(R)) < 1e4) return toast("That room comes out smaller than 1 m². Check the reference size and the corners.");
+    commit(); const old = S.room.pts; S.room.pts = R; S.room.open = []; reattachOpenings(old);
+    renderAll(); fit(); toast("Room outline updated from this photo"); W.tool = "view"; return afterPointsChange();
+  }
   if (polyArea(P) < 0) P.reverse();
   const ang = Math.atan2(P[1].y - P[0].y, P[1].x - P[0].x);
   let R = P.map(p => V.rot(p, -ang)); const o = { ...R[0] };
@@ -1775,8 +1981,11 @@ function useRoom() {
   commit();
   const wasExample = S.isExample;
   if (wasExample) { const l = { id: uid(), name: "Layout 1", pos: {} }; S.items = []; S.layouts = [l]; S.current = l.id; S.isExample = false; }
-  S.room.pts = R; S.openings = [];
+  S.room.pts = R; S.room.open = []; S.openings = [];
+  const stale = S.photos.filter(q => q !== W.photo && q.roomT);
+  stale.forEach(q => (q.roomT = null));   // the plan's frame changed, so other photos need linking again
   W.photo.roomT = T; keepRef();
+  if (stale.length) setTimeout(() => toast(`Link your other ${stale.length === 1 ? "photo" : stale.length + " photos"} to the plan again`), 2700);
   renderAll(); fit();
   toast(wasExample ? "Room set. The example furniture was removed." : "Room set from the photo");
   W.tool = "item"; afterPointsChange();

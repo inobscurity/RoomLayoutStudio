@@ -32,6 +32,18 @@ homography). Any two points you tap on the same surface can then be measured in 
   photograph it straight on. Tap two points for the width and two for the height. Add the depth from a side
   photo or type it in.
 - **Distance tool.** Measures between any two points on the floor.
+- **More room photos, from other angles.** Photograph the room from another corner, with the paper anywhere
+  on the floor. Use **Link to plan** to tap two room corners you can see, matching each to a corner on a
+  small plan of the room. After that, furniture you mark in that photo lands where it stands. You can also
+  trace the room outline from it, for example the open-plan edge that only that angle shows.
+- **Preview.** In a linked photo, Preview draws the current layout into the photo from where it was taken.
+  Pieces with a height appear as see-through boxes. The app estimates the camera from the floor reference,
+  so it's an approximation: boxes can lean or drift a little, most near the edges of the picture. **Layouts
+  → See it in your photos** opens each linked photo, so you can view a layout from every angle you
+  photographed.
+
+The app pairs the reference's long and short sides with the right edges in the photo by itself. If the
+labelled side is still wrong, press **Swap sides**.
 
 Accuracy depends on the reference. A bigger one is better, and points far from it are less accurate. Expect
 a few percent of error with a sheet of paper. Check any measurement that matters with a tape.
@@ -44,6 +56,10 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   show the distance to the nearest furniture.
 - Furniture that overlaps another piece or goes through a wall is outlined in red. Rugs can be marked as
   lying on the floor so other furniture can stand on them.
+- **Open-plan spaces:** in the Room tab, mark any side of the room as **Open** where there's no wall, and
+  add corners with **Edit corners** to mark where the room's area ends. Open sides are drawn dashed.
+  Furniture doesn't snap to them, wall distances ignore them, and furniture can cross them without a
+  warning. It's only flagged once it is outside the room area.
 - **Things on top of furniture:** set **Stands on** to put a piece on another one, such as a TV on a TV
   cabinet or a lamp on a side table. It moves and turns with the piece underneath in every layout. The app
   shows how high its top is, and warns if it sticks out past the edge. Drag it off to put it back on the
