@@ -5,6 +5,18 @@ measures the walls and the furniture from the photos. You then drag the furnitur
 to try different layouts. It's a single file, `index.html`, and needs no install or server. Open it on a
 phone or a computer.
 
+## Use it on your phone
+
+The easiest way is to publish it with GitHub Pages, which is free:
+
+1. On GitHub, open this repository's **Settings → Pages**.
+2. Under **Build and deployment**, set **Source** to *Deploy from a branch*, choose branch `main` and
+   folder `/ (root)`, then press **Save**.
+3. After a minute the app is at `https://inobscurity.github.io/roomlayoutstudio/`. Open that on your
+   phone. In Safari or Chrome you can choose **Add to Home Screen** to get an app icon.
+
+On a computer you can also download `index.html` and open it in a browser.
+
 ## How measuring from a photo works
 
 One photo only gives you sizes if something of known size lies flat in it. Room Layout Studio uses a reference
