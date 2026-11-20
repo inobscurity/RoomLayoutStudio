@@ -456,7 +456,7 @@ function sampleProject() {
   return {
     version: 1, units: "metric", isExample: true, distTo: "walls", snap: true,
     room: { pts: [{ x: 0, y: 0 }, { x: 460, y: 0 }, { x: 460, y: 380 }, { x: 0, y: 380 }], height: 250 },
-    openings: [{ id: uid(), type: "window", wall: 0, t: 230, w: 160 }, { id: uid(), type: "door", wall: 2, t: 395, w: 85, flip: 0 }],
+    openings: [{ id: uid(), type: "window", wall: 0, t: 230, w: 160, sill: 90, h: 120 }, { id: uid(), type: "door", wall: 2, t: 395, w: 85, flip: 0 }],
     items: [rug, sofa, table, chair, stand, tv, shelf, lamp],
     layouts: [la, lb], current: la.id, photos: [],
   };
@@ -591,6 +591,19 @@ function wallInfo(i) {
 /* Open sides: edges of the room outline with no wall, for open-plan spaces. */
 const isOpen = i => !!(S.room.open && S.room.open[i]);
 const solidEdges = () => edges(S.room.pts).filter((_, i) => !isOpen(i));
+const winSill = o => o.sill ?? 90, winH = o => o.h ?? 120, DOOR_H = 205;
+/* a piece near a window (within 60 cm of its wall, overlapping it along the wall) whose top is above the sill */
+function windowBlock(it) {
+  if (it.floor || !(it.h > 0)) return null;
+  const top = topOf(it), P = itemPoly(it);
+  for (const o of S.openings) {
+    if (o.type !== "window") continue;
+    const w = wallInfo(o.wall), along = P.map(c => V.dot(V.sub(c, w.a), w.e)), inward = P.map(c => V.dot(V.sub(c, w.a), w.nIn));
+    if (Math.min(...inward) > 60 || Math.max(...along) < o.t - o.w / 2 || Math.min(...along) > o.t + o.w / 2) continue;
+    if (top > winSill(o) + 1) return { o, top, msg: `Covers part of a window: its top is ${fmt(top)}, the sill ${fmt(winSill(o))}` };
+  }
+  return null;
+}
 function opCenter(o) { const w = wallInfo(o.wall); return V.add(w.a, V.mul(w.e, o.t)); }
 function nearestWall(p) {
   let best = null;
@@ -634,6 +647,7 @@ function problems() {
     // across an open side is fine; only real walls and leaving the room area count
     if (crossesWall || (cornersOut && !hasOpen)) add(it.id, "Goes through a wall or outside the room");
     else if (hasOpen && !pointInPoly(posOf(it.id), S.room.pts)) add(it.id, "Outside the room area");
+    const wb = windowBlock(it); if (wb) add(it.id, wb.msg);
   }
   return out;
 }
@@ -656,7 +670,7 @@ function clearances(it) {
       if (t < best.dist) best = { dist: t, from: o, to: V.add(o, V.mul(s.n, t)), kind: g.kind, name: g.name };
     }
     const side = Math.abs(s.n.x) > Math.abs(s.n.y) ? (s.n.x > 0 ? "Right" : "Left") : (s.n.y > 0 ? "Bottom" : "Top");
-    return { side, ...best };
+    return { side, n: s.n, ...best };
   }).sort((a, b) => ["Top", "Bottom", "Left", "Right"].indexOf(a.side) - ["Top", "Bottom", "Left", "Right"].indexOf(b.side));
 }
 function overlapsWith(it) {
@@ -1037,7 +1051,8 @@ function panelFurniture() {
       ${it.tv ? tvSection(it) : ""}
       ${isSeat(it) ? seatSection(it) : ""}
       <div class="sec"><h3>Gap to ${S.distTo === "all" ? "walls and furniture" : "walls"}, as seen on the plan</h3>
-        <div class="dists">${cl.map(c => `<div class="dist"><span>${c.side}${c.kind === "item" ? ` <span class="muted">(${esc(c.name)})</span>` : ""}</span><b>${isFinite(c.dist) ? esc(fmt(c.dist)) : "–"}</b></div>`).join("")}</div>
+        <div class="dists">${cl.map((c, i) => `<label class="dist" style="align-items:center"><span>${c.side}${c.kind === "item" ? ` <span class="muted">(${esc(c.name)})</span>` : ""}</span>${isFinite(c.dist) ? `<input class="in num" id="f-gap${i}" data-gap="${i}" value="${esc(fmtIn(Math.round(c.dist)))}" style="width:76px;min-height:30px;padding:3px 6px;text-align:right" inputmode="decimal">` : "<b>–</b>"}</label>`).join("")}</div>
+        <p class="tip" style="margin:0">Type a gap you measured with a tape to move the piece exactly.</p>
       </div>
       <div class="sec" style="gap:6px"><h3>This piece is</h3>
         <label class="toggle"><input type="checkbox" id="f-tv" data-f="tv" ${it.tv ? "checked" : ""}> A TV or screen</label>
@@ -1098,6 +1113,8 @@ function tvSection(it) {
     <div class="row"><button class="btn sm" data-act="turn">Turn around</button><span class="tip">The highlighted edge is the screen.</span></div>`;
   if (size > 0) {
     h += `<p class="tip">For a ${size}″ screen: ${esc(viewRange(size))}.</p>`;
+    const wb = windowBlock(it);
+    if (S.openings.some(o => o.type === "window")) h += wb ? `<div class="warnline">● Its top (${esc(fmt(wb.top))}) is above the window sill (${esc(fmt(winSill(wb.o)))})</div>` : it.h ? `<p class="tip">Clear of the windows.</p>` : `<p class="tip">Add its height to check it against the window sills.</p>`;
     h += list.length ? `<div class="list">${list.slice(0, 5).map(x => viewRow(x, x.seat.name)).join("")}</div>`
       : `<p class="tip">No seat is in front of the screen. Turn the TV around, or mark a piece as somewhere people sit.</p>`;
   }
@@ -1123,6 +1140,9 @@ function panelRoom() {
     h += `<div class="card sel"><b style="font:600 16px var(--font-display)">${o.type === "door" ? "Door" : "Window"}</b>
       <div class="grid2"><label class="f">Width<input class="in num" id="o-w" data-o="w" value="${esc(fmtIn(o.w))}"></label>
       <label class="f">From wall corner<input class="in num" id="o-t" data-o="t" value="${esc(fmtIn(o.t - o.w / 2))}"></label></div>
+      ${o.type === "window" ? `<div class="grid2"><label class="f">Sill height (from floor)<input class="in num" id="o-sill" data-o="sill" value="${esc(fmtIn(winSill(o)))}"></label>
+      <label class="f">Window height<input class="in num" id="o-h" data-o="h" value="${esc(fmtIn(winH(o)))}"></label></div>
+      <p class="tip">Furniture near this window that's taller than the sill is flagged, so you can check a TV or bookcase won't cover it.</p>` : ""}
       <div class="row">${o.type === "door" ? `<button class="btn sm" data-act="flip-h">Swap hinge side</button><button class="btn sm" data-act="flip-io">Open in / out</button>` : ""}
       <button class="btn sm danger" data-act="del-op">Delete</button></div>
       <p class="tip">Drag it along the walls on the plan.</p></div>`;
@@ -1229,7 +1249,7 @@ pbody.addEventListener("click", e => {
         let at = 0;
         for (const [s0, s1] of [...taken, [L, L]]) { if (s0 - at > best.len) best = { len: s0 - at, wall: i, t: (at + s0) / 2 }; at = Math.max(at, s1); }
       });
-      const isDoor = a === "add-door", o = { id: uid(), type: isDoor ? "door" : "window", wall: best.wall, t: best.t, w: Math.min(isDoor ? 85 : 120, Math.max(40, best.len - 10)), flip: 0 };
+      const isDoor = a === "add-door", o = { id: uid(), type: isDoor ? "door" : "window", wall: best.wall, t: best.t, w: Math.min(isDoor ? 85 : 120, Math.max(40, best.len - 10)), flip: 0, ...(isDoor ? {} : { sill: 90, h: 120 }) };
       clampOp(o); S.openings.push(o); sel = { type: "op", id: o.id }; renderAll(); save(); break;
     }
     case "select-wall": sel = { type: "wall", i: +b.dataset.i }; renderPlan(); renderPanel(); break;
@@ -1270,6 +1290,12 @@ function addTvOn(base, size) {
 pbody.addEventListener("change", e => {
   const t = e.target;
   const it = sel && sel.type === "item" ? S.items.find(i => i.id === sel.id) : null;
+  if (t.dataset.gap !== undefined && it) {
+    const c = clearances(it)[+t.dataset.gap], v = parseLen(t.value);
+    if (c && isFinite(c.dist) && isFinite(v) && v >= 0) { commit(); const p = posOf(it.id); p.x += c.n.x * (c.dist - v); p.y += c.n.y * (c.dist - v); setPos(it.id, p); }
+    else toast(`Couldn't read “${t.value}”.`);
+    renderAll(); save(); return;
+  }
   if (t.dataset.f && it) {
     const k = t.dataset.f;
     if (k === "name") { commit(); it.name = t.value.trim() || "Untitled"; }
@@ -1283,7 +1309,11 @@ pbody.addEventListener("change", e => {
     renderAll(); save();
   } else if (t.dataset.o) {
     const o = S.openings.find(q => q.id === sel.id), v = parseLen(t.value);
-    if (isFinite(v)) { commit(); if (t.dataset.o === "w") o.w = Math.max(20, v); else o.t = v + o.w / 2; clampOp(o); }
+    if (isFinite(v)) {
+      commit(); const k = t.dataset.o;
+      if (k === "w") o.w = Math.max(20, v); else if (k === "sill") o.sill = Math.max(0, v); else if (k === "h") o.h = Math.max(10, v); else o.t = v + o.w / 2;
+      clampOp(o);
+    }
     renderAll(); save();
   } else if (t.dataset.r) {
     const v = parseLen(t.value);
@@ -1446,12 +1476,13 @@ function toast(msg) { const t = $("#toast"); t.style.top = wiz.hidden ? "" : "ca
    Photo measuring
    ================================================================ */
 const wiz = $("#wiz"), cv = $("#wcv"), ctx = cv.getContext("2d"), loupe = $("#loupe"), lctx = loupe.getContext("2d");
-const LIMIT = { ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2, link: 2, view: 0 };
+const LIMIT = { ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2, link: 2, view: 0, hgt: 2 };
+const limitOf = key => key === "item" && W.itemMode === "centre" ? 1 : LIMIT[key];
 let W = null; // wizard state
 function newWiz(kind) {
   return { kind, step: kind ? "pick" : "choose", photo: null, img: null, v: { s: 1, tx: 0, ty: 0 },
     ref: { type: "a4", W: 21, H: 29.7, pts: [] }, H: null, Hsign: 1,
-    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [], link: [], view: [] },
+    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [], link: [], view: [], hgt: [] }, itemMode: "floor",
     linkV: [], linkPick: null, fade: false, Hi: null, cam: null,
     square: true, form: { name: "", w: "", d: "", h: "" }, edited: {}, target: null, active: null };
 }
@@ -1520,6 +1551,25 @@ function bestRefOrder(pts, Wd, Hd, imgW, imgH) {
   const alt = pts.slice(1).concat(pts.slice(0, 1));
   return score(alt) < score(pts) * 0.7 ? alt : pts;
 }
+/* the floor-plane point (x, y) at height z that a tap in the photo lands on (inverse of project) */
+function backProject(p, z) {
+  const cam = W.cam; if (!cam) return null;
+  const d = [(p.x - cam.cx) / cam.f, (p.y - cam.cy) / cam.f, 1];
+  const A = [0, 1, 2].map(i => [cam.r1[i], cam.r2[i], -d[i]]), b = [0, 1, 2].map(i => -cam.t[i] - cam.r3[i] * z);
+  const sol = solveLinear(A, b);
+  return sol && sol[2] > 0 ? { x: sol[0], y: sol[1] } : null;
+}
+const toPlaneAt = (p, z) => z ? backProject(p, z) : toPlane(p);
+const pdz = (a, b, z) => { const A = toPlaneAt(a, z), B = toPlaneAt(b, z); return A && B ? V.dist(A, B) : NaN; };
+/* height of the point tapped straight above a floor point */
+function heightAbove(base, top) {
+  const B = toPlane(base); if (!B || !W.cam) return NaN;
+  const err = z => { const q = project(W.cam, B.x, B.y, z); return q ? Math.hypot(q.x - top.x, q.y - top.y) : Infinity; };
+  let best = 0; for (let z = 0; z <= 600; z += 2) if (err(z) < err(best)) best = z;
+  for (let z = best - 2; z <= best + 2; z += 0.1) if (err(z) < err(best)) best = z;
+  return best;
+}
+const itemZ = () => W.itemMode === "floor" ? 0 : formLen("h");
 function project(cam, X, Y, Z) {
   const c = i => cam.r1[i] * X + cam.r2[i] * Y + cam.r3[i] * Z + cam.t[i], z = c(2);
   return z > 1 ? { x: cam.f * c(0) / z + cam.cx, y: cam.f * c(1) / z + cam.cy, z } : null;
@@ -1586,9 +1636,17 @@ function wdraw() {
     if (fi.length) {
       ctx.strokeStyle = P; ctx.lineWidth = 2.5; ctx.beginPath(); fi.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
       const ip = W.sets.item;
-      if (ip.length > 1) label(V.mid(fi[0], fi[1]), "W " + fmt(pd(ip[0], ip[1])), P);
-      if (ip.length > 2) label(V.mid(fi[1], fi[2]), "D " + fmt(pd(ip[1], ip[2])), P);
+      const z = itemZ();
+      if (ip.length > 1 && isFinite(z)) label(V.mid(fi[0], fi[1]), "W " + fmt(pdz(ip[0], ip[1], z)), P);
+      if (ip.length > 2 && isFinite(z)) label(V.mid(fi[1], fi[2]), "D " + fmt(pdz(ip[1], ip[2], z)), P);
       fi.forEach((p, i) => dotAt(p, P, String(i + 1), W.tool === "item" ? 1 : 0.5));
+    }
+    const hg = S2("hgt");
+    if (hg.length) {
+      const O = "#ffb35c";
+      ctx.strokeStyle = O; ctx.lineWidth = 2.5; ctx.beginPath(); hg.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+      if (hg.length === 2) label(V.mid(hg[0], hg[1]), "H " + fmt(heightAbove(W.sets.hgt[0], W.sets.hgt[1])), O);
+      hg.forEach((p, i) => dotAt(p, O, i ? "top" : "base", W.tool === "hgt" ? 1 : 0.5));
     }
     const di = S2("dist");
     if (di.length) {
@@ -1623,6 +1681,15 @@ function drawPlanOnPhoto() {
     ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
   });
   ctx.setLineDash([]);
+  // windows (sill to top) and doors, drawn on their walls
+  for (const o of S.openings) {
+    const w = wallInfo(o.wall), c = opCenter(o), a1 = V.add(c, V.mul(w.e, -o.w / 2)), a2 = V.add(c, V.mul(w.e, o.w / 2));
+    const z0 = o.type === "window" ? winSill(o) : 0, z1 = o.type === "window" ? winSill(o) + winH(o) : DOOR_H;
+    const q = [toImg(a1, z0 || 0.01), toImg(a2, z0 || 0.01), toImg(a2, z1), toImg(a1, z1)]; if (q.some(v => !v)) continue;
+    ctx.beginPath(); q.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.closePath();
+    ctx.fillStyle = o.type === "window" ? "rgba(69,208,219,.15)" : "rgba(255,255,255,.08)"; ctx.fill();
+    ctx.strokeStyle = o.type === "window" ? "#45d0db" : "#cfd8d5"; ctx.lineWidth = 2 * lw; ctx.setLineDash(o.type === "window" ? [] : [6 * lw, 5 * lw]); ctx.stroke(); ctx.setLineDash([]);
+  }
   if (view && cam) {
     const faces = [];
     for (const it of S.items) {
@@ -1733,7 +1800,7 @@ function wEnd(e) {
       }
     }
     else if (ip.x >= 0 && ip.y >= 0 && ip.x <= W.img.width && ip.y <= W.img.height) {
-      if (set.length < LIMIT[key]) {
+      if (set.length < limitOf(key)) {
         set.push(ip);
         if (key === "ref" && set.length === 4) { W.ref.pts = bestRefOrder(orderQuad(set), W.ref.W, W.ref.H, W.img.width, W.img.height); computeH(); }
         afterPointsChange();
@@ -1757,8 +1824,11 @@ function afterPointsChange() { syncForm(); wrenderBar(); wdraw(); }
 function measured() {
   const s = W.sets, m = {};
   if (W.kind === "floor") {
-    if (s.item.length >= 2) m.w = pd(s.item[0], s.item[1]);
-    if (s.item.length >= 3) m.d = pd(s.item[1], s.item[2]);
+    const z = itemZ();
+    if (W.itemMode !== "centre" && isFinite(z)) {
+      if (s.item.length >= 2) m.w = pdz(s.item[0], s.item[1], z);
+      if (s.item.length >= 3) m.d = pdz(s.item[1], s.item[2], z);
+    }
   } else {
     if (s.width.length === 2) m.w = pd(s.width[0], s.width[1]);
     if (s.height.length === 2) m.h = pd(s.height[0], s.height[1]);
@@ -1768,7 +1838,7 @@ function measured() {
 }
 function syncForm() {
   const m = measured();
-  for (const k of ["w", "d", "h"]) if (!W.edited[k]) W.form[k] = isFinite(m[k]) ? fmtIn(Math.round(m[k])) : "";
+  for (const k of ["w", "d", "h"]) if (!W.edited[k] && !(W.kind === "floor" && k === "h")) W.form[k] = isFinite(m[k]) ? fmtIn(Math.round(m[k])) : "";
 }
 function wreadout() {
   const parts = [];
@@ -1834,7 +1904,7 @@ function wrenderBar() {
     ${n === 4 ? `<p class="muted small" style="margin:0">Side A is labelled on the photo. If its length is wrong, swap the sides.</p>` : ""}`;
   } else if (W.kind === "floor") {
     const linked = !!W.photo.roomT;
-    const tools = [...(linked ? [["view", "Preview"]] : []), ["room", "Room corners"], ["item", "Furniture"], ["dist", "Distance"], ["link", linked ? "Relink" : "Link to plan"]];
+    const tools = [...(linked ? [["view", "Preview"]] : []), ["room", "Room corners"], ["item", "Furniture"], ["hgt", "Height"], ["dist", "Distance"], ["link", linked ? "Relink" : "Link to plan"]];
     h += `<div class="seg" style="flex-wrap:wrap">${tools.map(([k, l]) => `<button data-w="tool" data-t="${k}" aria-pressed="${W.tool === k}">${l}</button>`).join("")}</div>`;
     const set = W.sets[W.tool];
     if (W.tool === "view") {
@@ -1866,12 +1936,26 @@ function wrenderBar() {
       ${nearRight ? `<label class="toggle"><input type="checkbox" id="w-square" ${W.square ? "checked" : ""}> Square up the corners (walls meet at 90°)</label>` : ""}
       <div class="row"><button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button><button class="btn sm" data-w="clear" ${n ? "" : "disabled"}>Clear</button>
       <button class="btn tape" data-w="use-room" ${n >= 3 ? "" : "disabled"} style="margin-left:auto">${n === 3 ? "Use as a rectangular room" : "Use as the room"}</button></div>`;
+    } else if (W.tool === "hgt") {
+      const n = set.length, hv = n === 2 ? heightAbove(set[0], set[1]) : NaN;
+      h += `<p class="winstr">Tap a point where the piece meets the floor, then the point <b>straight above it</b> at the top, for example the bottom and top of a bookcase's front corner.</p>
+      <div class="wread" id="wread">${isFinite(hv) ? `<span>Height: ${esc(fmt(hv))}</span>` : ""}</div>
+      <div class="row"><button class="btn sm" data-w="clear" ${n ? "" : "disabled"}>Clear</button>
+      <button class="btn tape" data-w="use-hgt" ${isFinite(hv) ? "" : "disabled"} style="margin-left:auto">Use for the next piece</button></div>
+      <p class="muted small" style="margin:0">Rough: within a few centimetres when the piece is near the paper and the photo is taken from a normal standing height.</p>`;
     } else if (W.tool === "item") {
-      const n = set.length;
-      h += `<p class="winstr">Tap where the furniture meets the floor: <b>front-left</b>, <b>front-right</b>, then <b>one back corner</b>. ${n === 2 ? `<span class="muted">Can't see a back corner? Type the depth.</span>` : ""}</p>
+      const n = set.length, mode = W.itemMode, needH = mode !== "floor" && !isFinite(formLen("h"));
+      const how = {
+        floor: `Tap where the furniture meets the floor: <b>front-left</b>, <b>front-right</b>, then <b>one back corner</b>. ${n === 2 ? `<span class="muted">Can't see a back corner? Type the depth.</span>` : ""}`,
+        top: `For a piece whose base is hidden, like a bookcase behind a sofa: type its <b>height</b>, then tap its <b>top</b> corners: front-left, front-right, then one back corner if you can see it.`,
+        centre: `For something round or thin whose base is hidden, like a floor lamp: type its <b>height</b>, then tap the very top, above its middle. Type its width and depth, or leave them at 35 cm.`,
+      }[mode];
+      h += `<div class="seg" style="flex-wrap:wrap">${[["floor", "Floor corners"], ["top", "Top corners"], ["centre", "Top centre"]].map(([k, l]) => `<button data-w="imode" data-m="${k}" aria-pressed="${mode === k}">${l}</button>`).join("")}</div>
+      <p class="winstr">${how}</p>
+      ${needH ? `<div class="warnline">● Type the height first: it's how the app finds the floor position from the top.</div>` : ""}
       ${formFields(true)}
       <div class="row"><button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button>
-      <button class="btn tape" data-w="add-item" ${n >= 2 ? "" : "disabled"} style="margin-left:auto">Add to plan</button></div>
+      <button class="btn tape" data-w="add-item" ${n >= (mode === "centre" ? 1 : 2) ? "" : "disabled"} style="margin-left:auto">Add to plan</button></div>
       ${W.photo && W.photo.roomT ? `<p class="muted small" style="margin:0">It goes on the plan where it stands in this photo.</p>` : `<p class="muted small" style="margin:0">Mark the room corners in this photo, or link it to the plan, and the furniture lands where it stands now.</p>`}`;
     } else {
       h += `<p class="winstr">Tap two points on the floor to measure between them.</p><div class="wread" id="wread">${wreadout()}</div>
@@ -1908,7 +1992,12 @@ function farWarning() {
 $("#wbar").addEventListener("input", e => {
   const k = e.target.dataset.wf; if (!k) return;
   W.form[k] = e.target.value; W.edited[k] = true;
+  if (k === "h" && W.kind === "floor" && W.itemMode !== "floor") {   // top corners depend on the height
+    syncForm(); for (const f of ["w", "d"]) { const el = $("#wf-" + f); if (el && !W.edited[f]) el.value = W.form[f]; }
+    wdraw();
+  }
 });
+$("#wbar").addEventListener("change", e => { if (e.target.dataset.wf === "h" && W && W.itemMode !== "floor") wrenderBar(); });
 $("#wbar").addEventListener("change", e => {
   const t = e.target;
   if (t.id === "w-ref") {
@@ -1938,6 +2027,8 @@ wiz.addEventListener("click", e => {
     if (!S.photos.includes(W.photo)) S.photos.unshift(W.photo);
     W.fitted = false; save(); return wrender();
   }
+  if (a === "imode") { W.itemMode = b.dataset.m; W.sets.item = []; return afterPointsChange(); }
+  if (a === "use-hgt") { const hv = heightAbove(W.sets.hgt[0], W.sets.hgt[1]); W.form.h = fmtIn(Math.round(hv)); W.edited.h = true; W.sets.hgt = []; W.tool = "item"; toast(`Height ${fmt(hv)} filled in`); return afterPointsChange(); }
   if (a === "link-v") { W.linkPick = +b.dataset.v; return wrenderBar(); }
   if (a === "clear-link") { W.sets.link = []; W.linkV = []; W.linkPick = null; return afterPointsChange(); }
   if (a === "save-link") {
@@ -2003,8 +2094,17 @@ function cropThumb(pts, extendUp) {
 }
 function formLen(k) { const v = parseLen(W.form[k]); return isFinite(v) && v > 0 ? v : NaN; }
 function addFromFloor() {
-  const ip = W.sets.item, P = ip.map(toPlane);
-  if (P.some(p => !p)) return toast("A point is above the floor's horizon. Move it onto the floor.");
+  const mode = W.itemMode, z = itemZ();
+  if (mode !== "floor" && !isFinite(z)) return toast("Type the height first.");
+  const ip = W.sets.item, P = ip.map(q => toPlaneAt(q, z));
+  if (P.some(p => !p)) return toast(mode === "floor" ? "A point is above the floor's horizon. Move it onto the floor." : "That point can't be at the height you typed. Check the height and the point.");
+  if (mode === "centre") {
+    const w = formLen("w") || 35, d = formLen("d") || 35, name = W.form.name.trim() || "Floor lamp";
+    const c = W.photo.roomT ? planeToRoom(P[0], W.photo.roomT) : null;
+    addItem(name, Math.round(w), Math.round(d), Math.round(z), false, c ? { x: Math.round(c.x), y: Math.round(c.y), r: 0 } : null, cropThumb([ip[0], { x: ip[0].x, y: ip[0].y + 60 }], false));
+    toast(`Added ${name}`);
+    W.sets.item = []; W.form = { name: "", w: "", d: "", h: "" }; W.edited = {}; return afterPointsChange();
+  }
   const w = formLen("w"), d = formLen("d"), h = formLen("h");
   if (!isFinite(w)) return toast("Width is missing. Tap the two front corners.");
   if (!isFinite(d)) return toast("Depth is missing. Tap a back corner or type the depth.");
@@ -2012,7 +2112,7 @@ function addFromFloor() {
   let center;
   if (P.length >= 3 && !W.edited.d) center = V.mid(P[0], P[2]);
   else {
-    const mid = V.mid(ip[0], ip[1]), away = toPlane({ x: mid.x, y: mid.y - 40 }), m = V.mid(P[0], P[1]);
+    const mid = V.mid(ip[0], ip[1]), away = toPlaneAt({ x: mid.x, y: mid.y - 40 }, z), m = V.mid(P[0], P[1]);
     let n = { x: -e.y, y: e.x }; if (away && V.dot(n, V.sub(away, m)) < 0) n = V.mul(n, -1);
     center = V.add(m, V.mul(n, d / 2));
   }

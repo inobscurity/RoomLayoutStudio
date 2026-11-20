@@ -31,8 +31,13 @@ homography). Any two points you tap on the same surface can then be measured in 
 - **Furniture photo (the front).** Hold or tape a sheet of paper flat against the front of the piece and
   photograph it straight on. Tap two points for the width and two for the height. Add the depth from a side
   photo or type it in.
+- **Things whose base is hidden,** like a bookcase or floor lamp behind a sofa. In the Furniture tool,
+  choose **Top corners**, type the piece's height, and tap its top corners instead of its feet. Or choose
+  **Top centre** and tap the top of a lamp. The app works out where the base is from the camera estimate.
+  Measure the height with a tape, from a furniture photo, or with the **Height** tool: tap a point where a
+  piece meets the floor, then the point straight above it.
 - **Distance tool.** Measures between any two points on the floor.
-- **More room photos, from other angles.** Photograph the room from another corner, with the paper anywhere
+- **More room photos, from other angles** (as many as you like). Photograph the room from another corner, with the paper anywhere
   on the floor. Use **Link to plan** to tap two room corners you can see, matching each to a corner on a
   small plan of the room. After that, furniture you mark in that photo lands where it stands. You can also
   trace the room outline from it, for example the open-plan edge that only that angle shows.
@@ -56,6 +61,11 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   show the distance to the nearest furniture.
 - Furniture that overlaps another piece or goes through a wall is outlined in red. Rugs can be marked as
   lying on the floor so other furniture can stand on them.
+- **Typed gaps:** the gaps to the walls in the panel can be typed in. Enter a distance you measured with a
+  tape and the piece moves exactly there. This is handy for pieces you couldn't measure in a photo.
+- **Windows** have a sill height and a window height (Room tab, select the window). Furniture within 60 cm
+  of a window, and taller than its sill, is flagged. That shows whether a TV on its cabinet would cover the
+  window. Windows and doors are also drawn in the photo Preview.
 - **Open-plan spaces:** in the Room tab, mark any side of the room as **Open** where there's no wall, and
   add corners with **Edit corners** to mark where the room's area ends. Open sides are drawn dashed.
   Furniture doesn't snap to them, wall distances ignore them, and furniture can cross them without a
