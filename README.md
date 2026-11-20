@@ -24,6 +24,13 @@ rectangle: a sheet of A4 or Letter paper, a bank card, a floor tile, or anything
 rug. You tap its four corners, and the app works out the perspective of that flat surface (a planar
 homography). Any two points you tap on the same surface can then be measured in centimetres or inches.
 
+- **Upright step (room photos).** A sheet of paper is big enough to set the scale, but too small to show how
+  the camera was tilted. After you mark the paper, the app finds upright edges in the photo, such as door
+  frames, cupboard sides and wall corners, and uses them for the tilt. It reads the lens's focal length from
+  the photo (phones record it). It then shows the **camera height**, which should be about where you held
+  the phone. That's a quick check the photo is set up right. You can remove or add edges by tapping. If the
+  photo has no lens information (screenshots, photos sent through some chat apps), type the 35 mm-equivalent
+  focal length; most phone main cameras are 23–26 mm.
 - **Room photo (the floor).** Tap the corners where the walls meet the floor to get the wall lengths and the
   room shape. Three corners are enough for a rectangular room. Then tap where each piece of furniture
   touches the floor (front-left, front-right, one back corner). That gives its width and depth, and it is

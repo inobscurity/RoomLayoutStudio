@@ -1476,13 +1476,13 @@ function toast(msg) { const t = $("#toast"); t.style.top = wiz.hidden ? "" : "ca
    Photo measuring
    ================================================================ */
 const wiz = $("#wiz"), cv = $("#wcv"), ctx = cv.getContext("2d"), loupe = $("#loupe"), lctx = loupe.getContext("2d");
-const LIMIT = { ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2, link: 2, view: 0, hgt: 2 };
+const LIMIT = { vtap: 2, ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2, link: 2, view: 0, hgt: 2 };
 const limitOf = key => key === "item" && W.itemMode === "centre" ? 1 : LIMIT[key];
 let W = null; // wizard state
 function newWiz(kind) {
   return { kind, step: kind ? "pick" : "choose", photo: null, img: null, v: { s: 1, tx: 0, ty: 0 },
     ref: { type: "a4", W: 21, H: 29.7, pts: [] }, H: null, Hsign: 1,
-    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [], link: [], view: [], hgt: [] }, itemMode: "floor", cornerMode: "floor",
+    tool: kind === "face" ? "width" : "room", sets: { room: [], item: [], dist: [], width: [], height: [], depth: [], link: [], view: [], hgt: [], vtap: [] }, up: null, upUsed: [], itemMode: "floor", cornerMode: "floor",
     linkV: [], linkPick: null, fade: false, Hi: null, cam: null,
     square: true, form: { name: "", w: "", d: "", h: "" }, edited: {}, target: null, active: null };
 }
@@ -1494,14 +1494,36 @@ function openWizard(kind, opts = {}) {
     const p = S.photos.find(q => q.id === opts.photoId);
     W.kind = p.kind; W.tool = p.kind === "face" ? "width" : opts.tool || (p.roomT ? "view" : "room"); W.photo = p; W.step = "loading";
     W.ref = JSON.parse(JSON.stringify(p.ref));
-    loadImg(p.src).then(img => { W.img = img; computeH(); W.step = "measure"; wsize(); wfit(); wrender(); });
+    loadImg(p.src).then(img => { W.img = img; updateUp(); computeH(); W.step = "measure"; wsize(); wfit(); wrender(); });
   }
   wrender();
 }
 function closeWizard() { wiz.hidden = true; W = null; renderAll(); save(); }
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
+/* The 35 mm-equivalent focal length a phone writes into the photo (EXIF tag 0xA405). */
+async function readFocal35(file) {
+  try {
+    const v = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (v.getUint16(0) !== 0xFFD8) return null;
+    let o = 2;
+    while (o + 4 < v.byteLength) {
+      const mk = v.getUint16(o), len = v.getUint16(o + 2);
+      if (mk === 0xFFE1 && v.getUint32(o + 4) === 0x45786966) {          // "Exif"
+        const t = o + 10, le = v.getUint16(t) === 0x4949, u16 = a => v.getUint16(a, le), u32 = a => v.getUint32(a, le);
+        const find = (ifd, tag) => { const n = u16(ifd); for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (u16(e) === tag) return e; } return null; };
+        const ex = find(t + u32(t + 4), 0x8769); if (!ex) return null;
+        const e = find(t + u32(ex + 8), 0xA405); if (!e) return null;
+        const f = u16(e + 8); return f > 8 && f < 400 ? f : null;
+      }
+      if ((mk & 0xFF00) !== 0xFF00 || mk === 0xFFDA) break;
+      o += 2 + len;
+    }
+  } catch (e) {}
+  return null;
+}
 async function takeFile(file) {
   try {
+    const f35 = await readFocal35(file);
     const url = URL.createObjectURL(file), img = await loadImg(url);
     const m = 2000, s = Math.min(1, m / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
@@ -1510,29 +1532,130 @@ async function takeFile(file) {
     const t = document.createElement("canvas"), ts = 96 / Math.max(c.width, c.height); t.width = c.width * ts; t.height = c.height * ts;
     t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
     W.img = await loadImg(src);
-    W.photo = { id: uid(), kind: W.kind, src, thumb: t.toDataURL("image/jpeg", 0.7), created: Date.now(), ref: null, roomT: null };
+    W.photo = { id: uid(), kind: W.kind, src, thumb: t.toDataURL("image/jpeg", 0.7), created: Date.now(), ref: null, roomT: null, f35: f35 || null, f35Guess: !f35, vlines: null };
     W.step = "ref"; W.ref.pts = []; W.H = null;
     wrender(); wsize(); wfit(); wdraw();
   } catch (err) { toast("That file couldn't be opened as a photo."); }
 }
+/* focal length in pixels of the working image, from the photo's 35 mm-equivalent lens (diagonal 43.27 mm) */
+function focalPx(allowGuess) {
+  const f35 = W.photo && (W.photo.f35 || (allowGuess ? 26 : null));
+  return f35 && W.img ? f35 / 43.27 * Math.hypot(W.img.width, W.img.height) : null;
+}
+const v3 = { dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], mul: (a, k) => a.map(x => x * k),
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], norm: a => { const l = Math.hypot(...a) || 1; return a.map(x => x / l); } };
+function inv3(m) {
+  const [a, b, c, d, e, f, g, h, i] = m, A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g, det = a * A + b * B + c * C;
+  if (Math.abs(det) < 1e-12) return null;
+  return [A, -(b * i - c * h), b * f - c * e, B, a * i - c * g, -(a * f - c * d), C, -(a * h - b * g), a * e - b * d].map(x => x / det);
+}
+/* The "up" direction in camera coordinates from upright edges in the photo. Each edge and the camera
+   centre span a plane; true verticals all lie in planes containing "up", so up is the direction most
+   perpendicular to every plane's normal. RANSAC drops edges that disagree (leaning or curved things). */
+function upFromLines(lines, f, cx, cy) {
+  const N = lines.map(([x1, y1, x2, y2]) => {
+    const a = [(x1 - cx) / f, (y1 - cy) / f, 1], b = [(x2 - cx) / f, (y2 - cy) / f, 1];
+    return { n: v3.norm(v3.cross(a, b)), w: Math.hypot(x2 - x1, y2 - y1) };
+  });
+  if (N.length < 2) return null;
+  const tol = Math.sin(0.8 * DEG); let best = null;
+  for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {   // every pair: the same photo always gives the same answer
+    let u = v3.cross(N[i].n, N[j].n); if (Math.hypot(...u) < 1e-6) continue; u = v3.norm(u);
+    if (Math.abs(u[1]) < 0.5) continue;                                   // "up" must be roughly the image's vertical
+    let sc = 0; const inl = [];
+    N.forEach((q, m) => { if (Math.abs(v3.dot(q.n, u)) < tol) { sc += q.w; inl.push(m); } });
+    if (!best || sc > best.sc) best = { sc, inl, u };
+  }
+  if (!best || best.inl.length < 2) return null;
+  // refine: smallest eigenvector of sum w n n^T (power iteration on trace*I - M)
+  const M = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  best.inl.forEach(m => { const { n, w } = N[m]; for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) M[r * 3 + c] += w * n[r] * n[c]; });
+  const tr = M[0] + M[4] + M[8]; let u = best.u;
+  for (let it = 0; it < 200; it++) { u = v3.norm([0, 1, 2].map(r => tr * u[r] - (M[r * 3] * u[0] + M[r * 3 + 1] * u[1] + M[r * 3 + 2] * u[2]))); }
+  if (u[1] > 0) u = v3.mul(u, -1);                                         // image y points down, so "up" has negative y
+  return { up: u, used: best.inl };
+}
+/* Camera from "up", the lens and the paper: the floor is the plane perpendicular to up; the paper only
+   sets the scale (camera height) and where the floor's axes start. */
+function cameraFromUp(up, pts, Wd, Hd, f, cx, cy) {
+  const ray = p => [(p.x - cx) / f, (p.y - cy) / f, 1];
+  const onFloor = (p, h) => { const r = ray(p), d = v3.dot(up, r); return d < 0 ? v3.mul(r, -h / d) : null; };
+  const P = pts.map(p => onFloor(p, 1)); if (P.some(q => !q)) return null;
+  const L = [0, 1, 2, 3].map(k => Math.hypot(...v3.sub(P[(k + 1) % 4], P[k])));
+  let best = null;
+  for (const o of [0, 1]) {
+    const ref = o ? [Hd, Wd, Hd, Wd] : [Wd, Hd, Wd, Hd], r = ref.map((v, k) => v / L[k]), m = r.reduce((a, b) => a + b) / 4;
+    const sd = Math.sqrt(r.reduce((a, b) => a + (b - m) ** 2, 0) / 4) / m;
+    if (!best || sd < best.sd) best = { o, h: m, sd };
+  }
+  const order = best.o ? pts.slice(1).concat(pts.slice(0, 1)) : pts.slice();
+  const Q = order.map(p => onFloor(p, best.h)), O = Q[0];
+  let e1 = v3.sub(Q[1], O); e1 = v3.norm(v3.sub(e1, v3.mul(up, v3.dot(e1, up))));
+  let e2 = v3.cross(up, e1); if (v3.dot(e2, v3.sub(Q[3], O)) < 0) e2 = v3.mul(e2, -1);
+  const Hi = [f * e1[0] + cx * e1[2], f * e2[0] + cx * e2[2], f * O[0] + cx * O[2], f * e1[1] + cy * e1[2], f * e2[1] + cy * e2[2], f * O[1] + cy * O[2], e1[2], e2[2], O[2]].map(x => x / O[2]);
+  return { order, height: best.h, fit: best.sd, Hi, cam: { f, cx, cy, r1: e1, r2: e2, r3: up, t: O, stretch: best.sd } };
+}
+/* Find long upright edges automatically: near-vertical gradients, a Hough transform over small tilts,
+   then the longest unbroken run along each strong line. Works on a 1000 px copy for speed. */
+function detectUprights(img) {
+  const sc = Math.min(1, 1000 / img.width), w = Math.round(img.width * sc), h = Math.round(img.height * sc);
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
+  g.drawImage(img, 0, 0, w, h); const d = g.getImageData(0, 0, w, h).data, Lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) Lum[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2];
+  const xs = [], ys = [], yMax = Math.floor(h * 0.75);                     // the floor's boards also look upright: skip it
+  for (let y = 1; y < yMax - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const gx = Lum[y * w + x + 1] - Lum[y * w + x - 1], gy = Lum[(y + 1) * w + x] - Lum[(y - 1) * w + x], m = Math.hypot(gx, gy);
+    if (m > 40 && Math.abs(gx) > 0.94 * m) { xs.push(x); ys.push(y); }
+  }
+  const nA = 401, off = 100, W2 = w + 2 * off, yc = h / 2, tans = Array.from({ length: nA }, (_, k) => Math.tan((-20 + k * 0.1) * DEG));
+  const acc = new Int32Array(nA * W2);
+  for (let p = 0; p < xs.length; p++) { const x = xs[p], dy = ys[p] - yc; for (let k = 0; k < nA; k++) { const x0 = Math.round(x - dy * tans[k]) + off; if (x0 >= 0 && x0 < W2) acc[k * W2 + x0]++; } }
+  const lines = [];
+  for (let n = 0; n < 40; n++) {
+    let bi = 0; for (let i = 1; i < acc.length; i++) if (acc[i] > acc[bi]) bi = i;
+    if (acc[bi] < 80) break;
+    const k = Math.floor(bi / W2), x0 = bi % W2 - off, t = tans[k], run = [];
+    for (let p = 0; p < xs.length; p++) if (Math.abs(xs[p] - (x0 + (ys[p] - yc) * t)) < 1) run.push(ys[p]);
+    run.sort((a, b) => a - b);
+    let bs = 0, be = -1, s0 = 0;
+    for (let i = 1; i <= run.length; i++) if (i === run.length || run[i] - run[i - 1] > 12) { if (i - s0 > be - bs + 1) { bs = s0; be = i - 1; } s0 = i; }
+    if (be - bs + 1 >= 75 && run[be] - run[bs] > 90) { const y1 = run[bs], y2 = run[be]; lines.push([(x0 + (y1 - yc) * t) / sc, y1 / sc, (x0 + (y2 - yc) * t) / sc, y2 / sc]); }
+    for (let kk = Math.max(0, k - 15); kk <= Math.min(nA - 1, k + 15); kk++) for (let xx = Math.max(0, x0 + off - 6); xx <= Math.min(W2 - 1, x0 + off + 6); xx++) acc[kk * W2 + xx] = 0;
+  }
+  return lines;
+}
+/* the upright edges to use: the photo's (found or tapped), minus any the RANSAC step rejected */
+function updateUp() {
+  W.up = null; W.upUsed = [];
+  const f = focalPx(true), lines = W.photo && W.photo.vlines;
+  if (!f || !lines || lines.length < 2 || W.kind !== "floor") return;
+  const r = upFromLines(lines.map(l => l.slice(0, 4)), f, W.img.width / 2, W.img.height / 2);
+  if (r) { W.up = r.up; W.upUsed = r.used; }
+}
 function computeH() {
-  W.H = null;
+  W.H = null; W.camHeight = null; W.fit = null;
   if (W.ref.pts.length !== 4 || !(W.ref.W > 0 && W.ref.H > 0)) return;
   const dst = [{ x: 0, y: 0 }, { x: W.ref.W, y: 0 }, { x: W.ref.W, y: W.ref.H }, { x: 0, y: W.ref.H }];
-  W.H = homography(W.ref.pts, dst);
-  W.Hi = homography(dst, W.ref.pts);
-  W.cam = W.Hi && W.img ? estimateCamera(W.Hi, W.img.width, W.img.height) : null;
+  const f = W.img ? focalPx() : null, fUp = W.img ? focalPx(true) : null;
+  const viaUp = W.up && fUp ? cameraFromUp(W.up, W.ref.pts, W.ref.W, W.ref.H, fUp, W.img.width / 2, W.img.height / 2) : null;
+  if (viaUp) {
+    W.ref.pts = viaUp.order; W.Hi = viaUp.Hi; W.H = inv3(viaUp.Hi); W.cam = viaUp.cam; W.camHeight = viaUp.height; W.fit = viaUp.fit;
+  } else {
+    W.H = homography(W.ref.pts, dst);
+    W.Hi = homography(dst, W.ref.pts);
+    W.cam = W.Hi && W.img ? estimateCamera(W.Hi, W.img.width, W.img.height, f) : null;
+  }
   if (W.H) { const c = W.ref.pts.reduce((s, p) => ({ x: s.x + p.x / 4, y: s.y + p.y / 4 }), { x: 0, y: 0 }); W.Hsign = Math.sign(applyH(W.H, c).w) || 1; }
 }
 /* Camera from the floor homography (plane -> image), assuming square pixels and the principal
    point at the image centre: H ~ K [r1 r2 t]. The focal length comes from r1 being perpendicular
    to r2; if that is unreliable (a photo taken nearly straight down) a typical phone value is used. */
-function estimateCamera(H, w, h) {
+function estimateCamera(H, w, h, fKnown) {
   const cx = w / 2, cy = h / 2, col = j => [H[j] - cx * H[6 + j], H[3 + j] - cy * H[6 + j], H[6 + j]];
   const h1 = col(0), h2 = col(1), h3 = col(2), big = Math.max(w, h);
   const f2 = -(h1[0] * h2[0] + h1[1] * h2[1]) / (h1[2] * h2[2]);
   let f = f2 > 0 ? Math.sqrt(f2) : NaN;
-  if (!(f > 0.3 * big && f < 4 * big)) f = 0.8 * big;
+  if (fKnown) f = fKnown; else if (!(f > 0.3 * big && f < 4 * big)) f = 0.8 * big;
   const ki = v => [v[0] / f, v[1] / f, v[2]], a1 = ki(h1), a2 = ki(h2), a3 = ki(h3);
   let lam = 2 / (Math.hypot(...a1) + Math.hypot(...a2));
   if (a3[2] * lam < 0) lam = -lam;                       // the floor must be in front of the camera
@@ -1594,7 +1717,7 @@ function linkResult() {
 const activeT = () => (W.tool === "link" && linkResult()?.T) || W.photo?.roomT || null;
 function toPlane(p) { if (!W.H) return null; const q = applyH(W.H, p); return Math.sign(q.w) === W.Hsign ? q : null; }
 function pd(a, b) { const A = toPlane(a), B = toPlane(b); return A && B ? V.dist(A, B) : NaN; }
-function activeKey() { return W.step === "ref" ? "ref" : W.tool; }
+function activeKey() { return W.step === "ref" ? "ref" : W.step === "upright" ? "vtap" : W.tool; }
 function setOf(key) { return key === "ref" ? W.ref.pts : W.sets[key]; }
 
 /* view transform */
@@ -1623,6 +1746,14 @@ function wdraw() {
     if (R.length === 4 && W.H) { label(V.mid(R[0], R[1]), "A " + fmt(W.ref.W), Y); label(V.mid(R[1], R[2]), "B " + fmt(W.ref.H), Y); }
     const showDots = W.step === "ref";
     R.forEach((p, i) => dotAt(p, Y, showDots ? String(i + 1) : "", showDots ? 1 : 0.6));
+  }
+  if (W.step === "upright" || (W.step === "measure" && false)) {
+    (W.photo.vlines || []).forEach((l, i) => {
+      const a = scr({ x: l[0], y: l[1] }), b = scr({ x: l[2], y: l[3] }), used = W.upUsed.includes(i);
+      ctx.strokeStyle = used ? (l[4] ? "#f5c02a" : "#7be07b") : "#ff6b5a"; ctx.lineWidth = used ? 3 : 2; ctx.setLineDash(used ? [] : [6, 5]);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+    });
+    W.sets.vtap.forEach(p => dotAt(scr(p), "#f5c02a", "", 1));
   }
   if (W.step !== "measure") return;
   const S2 = k => W.sets[k].map(scr);
@@ -1801,6 +1932,13 @@ function wEnd(e) {
   if ((wd.type === "tap" || wd.type === "pt") && !wd.moved) {
     const ip = imgPt(local(e)), key = activeKey(), set = setOf(key);
     if (key === "view") { /* preview: nothing to tap */ }
+    else if (key === "vtap" && wd.type === "tap") {
+      const sp = local(e), L = W.photo.vlines || [];
+      const near = L.findIndex(([x1, y1, x2, y2]) => { const a = scr({ x: x1, y: y1 }), b = scr({ x: x2, y: y2 }), ab = V.sub(b, a), t = clamp(V.dot(V.sub(sp, a), ab) / Math.max(1, V.dot(ab, ab)), 0, 1); return V.dist(sp, V.add(a, V.mul(ab, t))) < 12; });
+      if (near >= 0 && !set.length) { L.splice(near, 1); }
+      else { set.push(ip); if (set.length === 2) { L.push([set[0].x, set[0].y, set[1].x, set[1].y, 1]); W.photo.vlines = L; W.sets.vtap = []; } }
+      updateUp(); computeH(); afterPointsChange();
+    }
     else if (key === "link" && wd.type === "tap" && ip.x >= 0 && ip.y >= 0 && ip.x <= W.img.width && ip.y <= W.img.height) {
       if (W.linkPick === null) toast("First choose the matching corner on the small plan below.");
       else {
@@ -1872,7 +2010,8 @@ function wreadLive() { const el = $("#wread"); if (el) el.innerHTML = wreadout()
 function wrender() {
   if (!W) return;
   $("#wtitle").textContent = W.kind === "face" ? (W.target ? "Measure " + (S.items.find(i => i.id === W.target)?.name || "furniture") : "Measure furniture") : W.kind === "floor" ? "Measure the room" : "Measure from a photo";
-  const steps = ["Photo", "Reference", "Measure"], idx = { choose: 0, pick: 0, loading: 2, ref: 1, measure: 2 }[W.step];
+  const steps = W.kind === "face" ? ["Photo", "Reference", "Measure"] : ["Photo", "Reference", "Upright", "Measure"];
+  const idx = W.kind === "face" ? { choose: 0, pick: 0, loading: 2, ref: 1, measure: 2 }[W.step] : { choose: 0, pick: 0, loading: 3, ref: 1, upright: 2, measure: 3 }[W.step];
   $("#wsteps").innerHTML = steps.map((s, i) => `<span class="${i === idx ? "on" : ""}">${s}</span>`).join("");
   const pick = $("#wpick");
   pick.hidden = !(W.step === "pick" || W.step === "choose" || W.step === "loading");
@@ -1909,10 +2048,22 @@ function wrenderBar() {
     <div class="wread" id="wread">${wreadout()}</div>
     <div class="row">
       <button class="btn sm" data-w="undo-pt" ${n ? "" : "disabled"}>Remove last point</button>
-      ${n === 4 ? `<button class="btn sm" data-w="swap">Swap sides A and B</button>` : ""}
+      ${n === 4 && !W.up ? `<button class="btn sm" data-w="swap">Swap sides A and B</button>` : ""}
       <button class="btn tape" data-w="next" ${W.H ? "" : "disabled"} style="margin-left:auto">Next</button>
     </div>
     ${n === 4 ? `<p class="muted small" style="margin:0">Side A is labelled on the photo. If its length is wrong, swap the sides.</p>` : ""}`;
+  } else if (W.step === "upright") {
+    const n = (W.photo.vlines || []).length, used = W.upUsed.length, ch = W.camHeight;
+    const lens = W.photo.f35 ? `${W.photo.f35} mm lens (from the photo)` : `Lens unknown, assuming 26 mm`;
+    const odd = ch && (ch < 70 || ch > 260);
+    h += `<p class="winstr">${W.finding ? "Finding upright edges…" : `Green lines are upright edges: door frames, cupboard sides, wall corners. They tell the app how the camera was tilted, which a sheet of paper is too small to show. <span class="muted">Tap both ends of an upright edge to add one; tap a line to remove it.</span>`}</p>
+      <div class="wread" id="wread">${W.finding ? "" : `<span>${used} of ${n} edges agree</span>${ch ? `<span>Camera height ${esc(fmt(ch))}</span><span>Paper fits within ${(W.fit * 100).toFixed(1)}%</span>` : ""}`}</div>
+      ${!W.finding && used < 2 ? `<div class="warnline">● Needs at least two upright edges. Add some, or skip this step (heights and ceiling corners will be rough).</div>` : ""}
+      ${odd ? `<div class="warnline">● A camera height of ${esc(fmt(ch))} looks wrong. Remove red or doubtful lines (curtains, leaning frames) or add straight edges.</div>` : ch ? `<p class="muted small" style="margin:0">Is ${esc(fmt(ch))} about where you held the phone? If so, the photo is set up well.</p>` : ""}
+      <div class="row"><span class="muted small">${esc(lens)}</span>
+      <label class="f" style="flex-direction:row;align-items:center;gap:6px"><span class="muted small">Lens (35 mm equiv.)</span><input class="in num" id="w-f35" value="${W.photo.f35 || ""}" placeholder="26" style="width:70px"></label></div>
+      <div class="row"><button class="btn sm" data-w="find-up" ${W.finding ? "disabled" : ""}>Find again</button><button class="btn sm" data-w="clear-up" ${n ? "" : "disabled"}>Clear lines</button><button class="btn sm" data-w="skip-up">Skip</button>
+      <button class="btn tape" data-w="next" ${W.finding || used < 2 ? "disabled" : ""} style="margin-left:auto">Next</button></div>`;
   } else if (W.kind === "floor") {
     const linked = !!W.photo.roomT;
     const tools = [...(linked ? [["view", "Preview"]] : []), ["room", "Room corners"], ["item", "Furniture"], ["hgt", "Height"], ["dist", "Distance"], ["link", linked ? "Relink" : "Link to plan"]];
@@ -2026,6 +2177,7 @@ $("#wbar").addEventListener("change", e => {
     computeH(); wrenderBar(); wdraw();
   } else if (t.id === "w-square") W.square = t.checked;
   else if (t.id === "w-ceil") { const v = parseLen(t.value); if (isFinite(v) && v > 150 && v < 800) { S.room.height = Math.round(v); save(); } else toast("Type the ceiling height, for example 250 or 8' 2\"."); afterPointsChange(); }
+  else if (t.id === "w-f35") { const v = parseFloat(t.value); if (v > 8 && v < 400) { W.photo.f35 = Math.round(v * 10) / 10; W.photo.f35Guess = false; } else if (!t.value) { W.photo.f35 = null; W.photo.f35Guess = true; } updateUp(); computeH(); afterPointsChange(); }
   else if (t.id === "w-fade") { W.fade = t.checked; wdraw(); }
   else if (t.id === "w-layout") { S.current = t.value; save(); wdraw(); }
 });
@@ -2038,7 +2190,11 @@ wiz.addEventListener("click", e => {
   if (a === "clear") { W.sets[W.tool] = []; return afterPointsChange(); }
   if (a === "swap") { W.ref.pts.push(W.ref.pts.shift()); computeH(); return afterPointsChange(); }
   if (a === "tool") { W.tool = b.dataset.t; return afterPointsChange(); }
-  if (a === "next") {
+  if (a === "next" && W.step === "ref" && W.kind === "floor") { W.step = "upright"; W.photo.ref = JSON.parse(JSON.stringify(W.ref)); if (!W.photo.vlines) findUprights(); return wrender(); }
+  if (a === "find-up") { findUprights(); return; }
+  if (a === "clear-up") { W.photo.vlines = []; updateUp(); computeH(); return afterPointsChange(); }
+  if (a === "skip-up") { W.photo.vlines = []; updateUp(); computeH(); }
+  if (a === "next" || a === "skip-up") {
     W.step = "measure";
     if (W.kind === "floor" && !W.photo.roomT && S.photos.some(q => q.roomT && q !== W.photo)) W.tool = "link";
     W.photo.ref = JSON.parse(JSON.stringify(W.ref));
@@ -2059,6 +2215,13 @@ wiz.addEventListener("click", e => {
   if (a === "add-item") return addFromFloor();
   if (a === "save-face") return saveFace();
 });
+function findUprights() {
+  W.finding = true; wrenderBar();
+  setTimeout(() => {
+    try { W.photo.vlines = detectUprights(W.img); } catch (e) { W.photo.vlines = []; }
+    W.finding = false; updateUp(); computeH(); afterPointsChange();
+  }, 30);
+}
 function keepRef() { if (W.photo) { W.photo.ref = JSON.parse(JSON.stringify(W.ref)); save(); } }
 
 function useRoom() {
