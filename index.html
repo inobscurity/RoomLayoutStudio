@@ -201,6 +201,14 @@ details.presets summary::-webkit-details-marker { display: none; }
 .v3stage canvas { display: block; touch-action: none; }
 .v3msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #c4d0ce; font-weight: 500; text-align: center; max-width: 80%; pointer-events: none; }
 .v3hint { margin: 0; padding: 8px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); color: #9fb0ae; font-size: 12.5px; background: #161c1e; }
+#guide { position: fixed; inset: 0; z-index: 40; background: rgba(10,14,15,.55); display: grid; place-items: center; padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
+.guide-card { background: var(--panel); color: var(--ink); border-radius: 12px; width: min(520px, 100%); max-height: 100%; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.guide-top { display: flex; justify-content: space-between; align-items: center; }
+.guide-card h2 { margin: 0; font: 700 21px/1.2 var(--font-display); text-wrap: balance; }
+.guide-body { display: flex; flex-direction: column; gap: 8px; line-height: 1.55; }
+.guide-body p { margin: 0; } .guide-body ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; }
+.guide-nav { justify-content: space-between; }
+.guide-dots { display: flex; gap: 5px; } .guide-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); } .guide-dots i.on { background: var(--ink); }
 #wiz { position: fixed; inset: 0; z-index: 30; background: #0d1112; color: #e8eeec; display: grid; grid-template-rows: auto 1fr auto; }
 .wtop { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px)); background: #161c1e; }
 .wtop h2 { margin: 0; font: 700 16px var(--font-display); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -274,6 +282,7 @@ details.presets summary::-webkit-details-marker { display: none; }
       <div class="banner" id="banner" hidden>
         <span class="pill">Example</span>
         <p>This is a sample room. Measure your own from a photo, or enter its size in the Room tab.</p>
+        <button class="btn sm" data-act="guide">How it works</button>
         <button class="btn sm tape" data-act="photo-room">Measure my room</button>
         <button class="btn sm" data-act="dismiss-banner">Hide</button>
       </div>
@@ -325,6 +334,14 @@ details.presets summary::-webkit-details-marker { display: none; }
   </div>
   <div class="v3stage" id="v3stage"><div class="v3msg" id="v3msg"></div></div>
   <p class="v3hint">Drag to turn the room, scroll or pinch to zoom. Modelled furniture is built to each piece's measurements and coloured from your photos; choose its shape in the piece's settings if it guessed wrong.</p>
+</div>
+<div id="guide" hidden>
+  <div class="guide-card" role="dialog" aria-modal="true" aria-labelledby="guide-t">
+    <div class="guide-top"><span class="pill" id="guide-n"></span><button class="btn sm icon" data-g="close" aria-label="Close">✕</button></div>
+    <h2 id="guide-t"></h2>
+    <div class="guide-body" id="guide-b"></div>
+    <div class="row guide-nav"><button class="btn" data-g="prev">Back</button><span class="guide-dots" id="guide-d"></span><button class="btn tape" data-g="next">Next</button></div>
+  </div>
 </div>
 <div class="toast" id="toast" hidden></div>
 
@@ -655,6 +672,18 @@ function reattachOpenings(oldPts) {
   const centers = S.openings.map(o => opCenter(o));
   S.room.pts = cur;
   S.openings.forEach((o, k) => { const n = nearestWall(centers[k]); o.wall = n.i; o.t = n.t; clampOp(o); });
+}
+/* Set one wall's length. Its far corner moves along the wall, and so do the corners after it up to the
+   wall running the opposite way, which takes up the difference (in a rectangle, the opposite wall). */
+function setWallLength(i, len) {
+  const pts = S.room.pts, n = pts.length, w = wallInfo(i), d = V.mul(w.e, len - w.L);
+  let stop = -1;
+  for (let k = 1; k < n; k++) { const j = (i + k) % n; if (j === i) break; const e = wallInfo(j).e; if (V.dot(e, w.e) < -0.98) { stop = j; break; } }
+  const move = [];
+  if (stop < 0) move.push((i + 1) % n);
+  else for (let k = 1; ; k++) { const j = (i + k) % n; move.push(j); if (j === stop) break; }
+  move.forEach(j => { pts[j] = { x: Math.round((pts[j].x + d.x) * 10) / 10, y: Math.round((pts[j].y + d.y) * 10) / 10 }; });
+  S.openings.forEach(clampOp);
 }
 function clampOp(o) { const w = wallInfo(o.wall); o.w = Math.min(o.w, w.L); o.t = clamp(o.t, o.w / 2, w.L - o.w / 2); }
 
@@ -1209,8 +1238,10 @@ function panelRoom() {
   </div>
   <div class="sec"><h3>Walls</h3>
     <div class="list">${pts.map((_, i) => `<div class="li" aria-current="${sel && sel.type === "wall" && sel.i === i}">
-      <button class="t" data-act="select-wall" data-i="${i}" style="border:0;background:none;text-align:left;padding:0"><b>Wall ${i + 1}</b><span>${esc(fmt(wallInfo(i).L))}</span></button>
+      <button class="t" data-act="select-wall" data-i="${i}" style="border:0;background:none;text-align:left;padding:0"><b>Wall ${i + 1}</b>${isOpen(i) ? `<span>open</span>` : ""}</button>
+      <input class="in num" id="r-wall${i}" data-wlen="${i}" value="${esc(fmtIn(Math.round(wallInfo(i).L * 10) / 10))}" style="width:86px;min-height:32px" aria-label="Length of wall ${i + 1}">
       <div class="seg"><button data-act="wall-open" data-i="${i}" data-v="0" aria-pressed="${!isOpen(i)}">Wall</button><button data-act="wall-open" data-i="${i}" data-v="1" aria-pressed="${isOpen(i)}">Open</button></div></div>`).join("")}</div>
+    <p class="tip">Type a length you measured with a tape and the room adjusts: the wall grows from its first corner, and the walls beyond it move out to match.</p>
     <p class="tip">In an open-plan space, mark the sides with no wall as <b>Open</b>. They're drawn dashed, furniture doesn't snap to them and wall distances ignore them. Tap a wall on the plan to find it here. Add corners with <b>Edit corners</b> to mark where the room's area ends.</p>
   </div>
   <div class="sec"><h3>Doors and windows</h3>
@@ -1249,6 +1280,7 @@ function panelProject() {
     ${confirmKey === "new" ? `<div class="confirm"><span>This clears the room, furniture, layouts and photos in this browser. Export first if you want a copy.</span><div class="row"><button class="btn sm danger" data-act="new">Clear and start over</button><button class="btn sm" data-act="cancel">Cancel</button></div></div>` : ""}
   </div>
   <div class="sec"><h3>Getting good measurements</h3>
+    <button class="btn" data-act="guide">How to measure a room, step by step</button>
     <p class="tip">A photo is measured against something of known size lying flat in it. The bigger it is, the better: a rug or a grid of floor tiles beats a sheet of paper, and a sheet of paper beats a bank card. Mark corners zoomed in. Measurements farther than a few metres from the reference can be off by 5% or more, so check the important ones with a tape.</p>
   </div>`;
   return h;
@@ -1321,6 +1353,7 @@ pbody.addEventListener("click", e => {
     case "del-layout": commit(); S.layouts = S.layouts.filter(l => l.id !== S.current); S.current = S.layouts[0].id; confirmKey = null; renderAll(); save(); break;
     case "cancel": confirmKey = null; renderPanel(); break;
     case "units": S.units = b.dataset.v; renderAll(); save(); break;
+    case "guide": openGuide(); break;
     case "open-photo": openWizard(null, { photoId: b.dataset.id }); break;
     case "preview-photo": openWizard(null, { photoId: b.dataset.id, tool: "view" }); break;
     case "del-photo": S.photos = S.photos.filter(p => p.id !== b.dataset.id); renderPanel(); save(); break;
@@ -1368,6 +1401,10 @@ pbody.addEventListener("change", e => {
       clampOp(o);
     }
     renderAll(); save();
+  } else if (t.dataset.wlen !== undefined) {
+    const v = parseLen(t.value), i = +t.dataset.wlen;
+    if (!isFinite(v) || v < 5) { toast(`Couldn't read “${t.value}”.`); renderPanel(); return; }
+    commit(); setWallLength(i, v); renderAll(); fit(); save();
   } else if (t.dataset.r) {
     const v = parseLen(t.value);
     if (!isFinite(v) || v <= 0) { toast(`Couldn't read “${t.value}”.`); renderPanel(); return; }
@@ -1390,8 +1427,47 @@ $("#b-photo").onclick = () => openWizard(null);
 document.querySelector(".stage").addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
   if (b.dataset.act === "photo-room") openWizard("floor");
+  if (b.dataset.act === "guide") openGuide();
   if (b.dataset.act === "dismiss-banner") { S.bannerHidden = true; $("#banner").hidden = true; save(); }
 });
+
+/* ---------- guided first run ---------- */
+const GUIDE = [
+  ["Before you start", `<p>You need a phone, a sheet of A4 or Letter paper, and a tape measure for one or two checks.</p>
+    <ul><li>Lay the paper flat on the floor where every photo can see it, near the middle of the room. <b>Leave it in the same spot for all your photos</b>: that's what lets them be linked with one tap.</li>
+    <li>Keep it out of window reflections on shiny floors.</li></ul>`],
+  ["Take the photos", `<ul><li>Take 3 or 4 photos from different corners or doorways, standing, phone tilted down a little so plenty of floor shows.</li>
+    <li>Get door frames, cupboard sides or wall corners in each photo: the app uses upright edges to work out how the phone was held.</li>
+    <li>Use the original photo files. Some chat apps strip the lens details the app reads.</li></ul>`],
+  ["Mark the paper, check the upright edges", `<p>Tap <b>Measure from photo → The room</b>, choose a photo, and tap the paper's 4 corners, zoomed in.</p>
+    <p>Next, green lines show upright edges the app found. Tap any that aren't truly upright to remove them. The camera height shown should be about where you held the phone.</p>`],
+  ["Trace the room", `<p>In <b>Room corners</b>, tap where the walls meet the floor, going around the room. If furniture hides the floor, switch to <b>Ceiling corners</b> and set the ceiling height.</p>
+    <p>Then in the <b>Room</b> tab, type one or two wall lengths you measured with a tape. The plan adjusts to match, which makes everything else more accurate. Mark open-plan sides as <b>Open</b>, and add windows, doors and openings.</p>`],
+  ["Link the other photos", `<p>Open each other photo the same way. At <b>Link to plan</b>, choose <b>Same as photo 1</b> if the paper hasn't moved, check the blue outline sits on the room, and save.</p>
+    <p>If the paper moved, link with two room corners instead.</p>`],
+  ["Add the furniture", `<p>In <b>Furniture</b>, tap where each piece meets the floor: front-left, front-right, then a back corner. Use whichever photo shows its feet best.</p>
+    <ul><li>Feet hidden? Use <b>Top corners</b> (bookcases) or <b>Top centre</b> (lamps) with the height typed in.</li>
+    <li>Correct any size from a tape in the piece's panel. Put a TV on its cabinet with <b>Stands on</b>.</li></ul>`],
+  ["Try layouts", `<p>Keep <b>As it is now</b> as the real arrangement. Use <b>Layouts → Copy as a new idea</b>, then drag and rotate pieces.</p>
+    <p>Open <b>3D view</b> to see an idea from where you took a photo or from a seat, and <b>Save image</b> to keep it. <b>Project → Export file</b> saves everything, photos included.</p>`],
+];
+let guideAt = 0;
+function openGuide() { guideAt = 0; $("#guide").hidden = false; drawGuide(); }
+function drawGuide() {
+  const [t, body] = GUIDE[guideAt];
+  $("#guide-n").textContent = `Step ${guideAt + 1} of ${GUIDE.length}`; $("#guide-t").textContent = t; $("#guide-b").innerHTML = body;
+  $("#guide-d").innerHTML = GUIDE.map((_, i) => `<i class="${i === guideAt ? "on" : ""}"></i>`).join("");
+  document.querySelector('[data-g="prev"]').disabled = guideAt === 0;
+  document.querySelector('[data-g="next"]').textContent = guideAt === GUIDE.length - 1 ? "Start measuring" : "Next";
+}
+$("#guide").addEventListener("click", e => {
+  const b = e.target.closest("[data-g]"); if (!b) { if (e.target.id === "guide") $("#guide").hidden = true; return; }
+  const g = b.dataset.g;
+  if (g === "close") $("#guide").hidden = true;
+  if (g === "prev" && guideAt > 0) { guideAt--; drawGuide(); }
+  if (g === "next") { if (guideAt < GUIDE.length - 1) { guideAt++; drawGuide(); } else { $("#guide").hidden = true; openWizard("floor"); } }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#guide").hidden) $("#guide").hidden = true; });
 
 /* ---------- export / import ---------- */
 let downloadsP = null;
@@ -1769,7 +1845,66 @@ function linkResult() {
   const t = V.sub(V.mid(R[0], R[1]), V.rot(V.mid(P[0], P[1]), th));
   return { T: { a: -th, ox: -t.x, oy: -t.y }, dp, dr };
 }
-const activeT = () => (W.tool === "link" && linkResult()?.T) || W.photo?.roomT || null;
+const activeT = () => (W.tool === "link" && (W.linkPaper ? paperT() : linkResult()?.T)) || W.photo?.roomT || null;
+/* The paper left in the same spot as in an earlier, linked photo: this photo's floor frame is that photo's,
+   turned about the paper's centre by however the paper's corners were tapped differently (half turns for
+   a rectangle, quarter turns for a square). */
+function paperCandidates(src) {
+  const A = src.roomT, Wd = W.ref.W, Hd = W.ref.H, m = { x: Wd / 2, y: Hd / 2 };
+  const turns = Math.abs(Wd - Hd) < 0.5 ? [0, 90, 180, 270] : [0, 180];
+  return turns.map(deg => {
+    const th = deg * DEG, Rm = V.rot(m, th), d = V.sub(V.rot(Rm, -A.a), V.rot(m, -A.a));
+    return { a: A.a - th, ox: A.ox + d.x, oy: A.oy + d.y };
+  });
+}
+function paperT() { const L = W.linkPaper; return L && L.cands[L.k]; }
+/* which way round fits: the camera has to stand inside the room (or very near it) */
+function cameraFootIn(T) {
+  if (!W.cam) return Infinity;
+  const c = W.cam, t = c.t, dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const foot = planeToRoom({ x: -dot(c.r1, t), y: -dot(c.r2, t) }, T);
+  if (pointInPoly(foot, S.room.pts)) return 0;
+  return Math.min(...edges(S.room.pts).map(([a, b]) => { const e = V.sub(b, a), u = clamp(V.dot(V.sub(foot, a), e) / Math.max(1, V.dot(e, e)), 0, 1); return V.dist(foot, V.add(a, V.mul(e, u))); }));
+}
+/* a small copy of the photo for quick brightness checks */
+function edgeMap() {
+  if (W.edges) return W.edges;
+  const sc = Math.min(1, 800 / W.img.width), w = Math.round(W.img.width * sc), h = Math.round(W.img.height * sc);
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); g.drawImage(W.img, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data, L = new Float32Array(w * h), G = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) L[i] = d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2];
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; G[i] = Math.hypot(L[i + 1] - L[i - 1], L[i + w] - L[i - w]); }
+  const B = new Float32Array(w * h);                                         // spread a little, so near-misses still count
+  for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) { let m = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) m = Math.max(m, G[(y + dy) * w + x + dx]); B[y * w + x] = m; }
+  return (W.edges = { B, w, h, sc });
+}
+/* How bright the photo is where the plan's windows would be, against the photo overall (windows are the
+   brightest thing in most rooms). null when no window would be in view. */
+function windowScore(T) {
+  if (!W.cam) return null;
+  const E = edgeMap(); if (!E.L) { const c = document.createElement("canvas"); c.width = E.w; c.height = E.h; const g = c.getContext("2d"); g.drawImage(W.img, 0, 0, E.w, E.h); const d = g.getImageData(0, 0, E.w, E.h).data; E.L = new Float32Array(E.w * E.h); let t = 0; for (let i = 0; i < E.w * E.h; i++) { E.L[i] = d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]; t += E.L[i]; } E.mean = t / (E.w * E.h); }
+  let sum = 0, n = 0, tot = 0;
+  for (const o of S.openings) {
+    if (o.type !== "window") continue;
+    const w = wallInfo(o.wall), [z0, z1] = opZ(o);
+    for (let u = 0.1; u < 0.95; u += 0.1) for (let z = z0 + 10; z < z1 - 5; z += 12) {
+      tot++;
+      const r = V.add(w.a, V.mul(w.e, o.t - o.w / 2 + o.w * u)), q = roomToPlane(r, T), v = project(W.cam, q.x, q.y, z); if (!v) continue;
+      const X = Math.round(v.x * E.sc), Y = Math.round(v.y * E.sc); if (X < 0 || Y < 0 || X >= E.w || Y >= E.h) continue;
+      sum += E.L[Y * E.w + X]; n++;
+    }
+  }
+  return n >= Math.max(6, tot * 0.3) ? sum / n / E.mean : null;
+}
+function startPaperLink(srcId) {
+  const src = S.photos.find(p => p.id === srcId); if (!src || !src.roomT) return;
+  const cands = paperCandidates(src), scores = cands.map(cameraFootIn), fit = cands.map(windowScore);
+  let k = scores.indexOf(Math.min(...scores));                               // fallback: the camera inside the room
+  const seen = fit.map((f, i) => f !== null ? i : -1).filter(i => i >= 0);
+  if (seen.length) { const best = seen.reduce((a, b) => fit[b] > fit[a] ? b : a); const other = seen.filter(i => i !== best).map(i => fit[i]);
+    if (!other.length ? fit[best] > 1.25 : fit[best] > 1.12 * Math.max(...other)) k = best; }   // a window clearly where the bright patch is
+  W.linkPaper = { src: srcId, cands, k, scores, fit };
+}
 function toPlane(p) { if (!W.H) return null; const q = applyH(W.H, p); return Math.sign(q.w) === W.Hsign ? q : null; }
 function pd(a, b) { const A = toPlane(a), B = toPlane(b); return A && B ? V.dist(A, B) : NaN; }
 function activeKey() { return W.step === "ref" ? "ref" : W.step === "upright" ? "vtap" : W.tool; }
@@ -2137,7 +2272,20 @@ function wrenderBar() {
         ${pts.map((q, i) => { const pi = W.linkV.indexOf(i), on = W.linkPick === i; return `<g data-w="link-v" data-v="${i}" style="cursor:pointer"><circle cx="${q.x}" cy="${q.y}" r="${14 * k2}" fill="${on ? "#f2b705" : pi >= 0 ? "#45d0db" : "#20292c"}" stroke="#e8eeec" stroke-width="${2 * k2}"/><text x="${q.x}" y="${q.y}" fill="${on || pi >= 0 ? "#111" : "#e8eeec"}" font-size="${13 * k2}" font-family="IBM Plex Sans, sans-serif" font-weight="600" text-anchor="middle" dominant-baseline="central" pointer-events="none">${i + 1}</text></g>`; }).join("")}
       </svg>`;
       const step = W.linkPick !== null ? `Now tap corner <b>${W.linkPick + 1}</b> in the photo, where the walls meet the ${W.cornerMode === "ceiling" ? "ceiling" : "floor"}.` : W.sets.link.length < 2 ? `Tap corner ${W.sets.link.length ? "another corner" : "a corner"} on the small plan, then the same corner in the photo.` : `Linked. Check that the blue outline sits on the room in the photo, then save.`;
-      h += cornerSwitch("each corner") + `<p class="winstr">Link this photo to the plan with two room corners you can see in it. ${step}</p>
+      const sameRef = S.photos.filter(p => p !== W.photo && p.kind === "floor" && p.roomT && p.ref && Math.abs(p.ref.W - W.ref.W) < 0.5 && Math.abs(p.ref.H - W.ref.H) < 0.5).sort((a, b) => a.created - b.created);
+      const order = S.photos.filter(p => p.kind === "floor" && p.roomT).sort((a, b) => a.created - b.created);
+      if (W.linkPaper) {
+        const L = W.linkPaper, n = order.findIndex(p => p.id === L.src) + 1, inside = L.scores[L.k] < 30;
+        h += `<p class="winstr">Linked through the paper, as in photo ${n}. Check that the blue outline of the room sits on the walls and floor in this photo.</p>
+        ${inside ? "" : `<div class="warnline">● This way round puts the camera outside the room. Try turning it round, or link with corners instead.</div>`}
+        <div class="row"><button class="btn sm" data-w="paper-turn">Turn it round</button><button class="btn sm" data-w="paper-cancel">Link with corners instead</button>
+        <button class="btn tape" data-w="save-paper" style="margin-left:auto">Save link</button></div>`;
+        bar.innerHTML = h; return;
+      }
+      if (sameRef.length) h += `<div class="card" style="background:#20292c;border-color:#2f3a3c;gap:8px"><b>The paper hasn't moved?</b>
+        <span class="muted small">If the paper is in exactly the same spot as in an earlier photo, link through it. No corners needed.</span>
+        <div class="row">${sameRef.map(p => `<button class="btn sm" data-w="paper-link" data-id="${p.id}">Same as photo ${order.indexOf(p) + 1}</button>`).join("")}</div></div>`;
+      h += cornerSwitch("each corner") + `<p class="winstr">Or link this photo to the plan with two room corners you can see in it. ${step}</p>
       <div class="row" style="align-items:flex-start">${svgPlan}<div class="wread" id="wread" style="flex-direction:column;gap:4px">${W.linkV.map((v, i) => `<span>Corner ${v + 1} ✓</span>`).join("")}
       ${res && res.err ? `<span style="color:#ff8a73">${esc(res.err)}</span>` : ""}
       ${res && res.T ? `<span>${Math.abs(res.dp / res.dr - 1) < 0.04 ? "Distances agree" : `The corners are ${fmt(res.dp)} apart in the photo, ${fmt(res.dr)} on the plan`}</span>` : ""}</div></div>
@@ -2263,6 +2411,10 @@ wiz.addEventListener("click", e => {
   if (a === "save-view") return savePhotoView();
   if (a === "open-3d") { const id = W.photo.id; closeWizard(); open3D().then(() => { V3.view = "photo:" + id; v3Bar(); setV3Camera().then(() => { v3Size(); v3Render(); }); }); return; }
   if (a === "link-v") { W.linkPick = +b.dataset.v; return wrenderBar(); }
+  if (a === "paper-link") { startPaperLink(b.dataset.id); return afterPointsChange(); }
+  if (a === "paper-turn") { const L = W.linkPaper; L.k = (L.k + 1) % L.cands.length; return afterPointsChange(); }
+  if (a === "paper-cancel") { W.linkPaper = null; return afterPointsChange(); }
+  if (a === "save-paper") { W.photo.roomT = { ...paperT() }; W.photo.linkedVia = W.linkPaper.src; W.linkPaper = null; keepRef(); W.tool = "view"; toast("Photo linked. Preview shows your layout from this angle."); return afterPointsChange(); }
   if (a === "clear-link") { W.sets.link = []; W.linkV = []; W.linkPick = null; return afterPointsChange(); }
   if (a === "save-link") {
     const res = linkResult(); if (!res || !res.T) return;
@@ -3119,6 +3271,7 @@ window.addEventListener("resize", () => { if (!v3el.hidden && V3.renderer) { v3S
   if (saved && saved.room && Array.isArray(saved.items)) S = Object.assign(blankProject(), saved);
   renderAll();
   requestAnimationFrame(fit);
+  try { if (S.isExample && !localStorage.getItem("rls-guide-seen")) { localStorage.setItem("rls-guide-seen", "1"); setTimeout(openGuide, 600); } } catch (e) {}
   new ResizeObserver(() => renderPlan()).observe(document.querySelector(".stage"));
   getDownloads();
 })();

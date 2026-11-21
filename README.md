@@ -17,6 +17,8 @@ The easiest way is to publish it with GitHub Pages, which is free:
 
 On a computer you can also download `index.html` and open it in a browser.
 
+**New to it?** Press **How it works** (on the example room, or under Project) for a seven-step walkthrough.
+
 ## How measuring from a photo works
 
 One photo only gives you sizes if something of known size lies flat in it. Room Layout Studio uses a reference
@@ -50,6 +52,10 @@ homography). Any two points you tap on the same surface can then be measured in 
   Measure the height with a tape, from a furniture photo, or with the **Height** tool: tap a point where a
   piece meets the floor, then the point straight above it.
 - **Distance tool.** Measures between any two points on the floor.
+- **The paper hasn't moved?** If the paper is in the same spot as in a photo you've already linked, choose
+  **Same as photo N** under **Link to plan**. No corners are needed. The app works out which way round the
+  paper was tapped, using where the window is bright in the photo, or where the camera must have stood. If
+  the blue outline doesn't sit on the room, press **Turn it round**.
 - **More room photos, from other angles** (as many as you like). Photograph the room from another corner, with the paper anywhere
   on the floor. Use **Link to plan** to tap two room corners you can see, matching each to a corner on a
   small plan of the room. After that, furniture you mark in that photo lands where it stands. You can also
@@ -103,6 +109,8 @@ a few percent of error with a sheet of paper. Check any measurement that matters
 - **Windows** have a sill height and a window height (Room tab, select the window). Furniture within 60 cm
   of a window, and taller than its sill, is flagged. That shows whether a TV on its cabinet would cover the
   window. Windows and doors are also drawn in the photo Preview.
+- **Wall lengths:** type any wall's length in **Room → Walls**, in any room shape. The wall grows from its
+  first corner, and the walls beyond it move to match (in a rectangle, the opposite wall).
 - **Open-plan spaces:** in the Room tab, mark any side of the room as **Open** where there's no wall, and
   add corners with **Edit corners** to mark where the room's area ends. Open sides are drawn dashed.
   Furniture doesn't snap to them, wall distances ignore them, and furniture can cross them without a
