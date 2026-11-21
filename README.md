@@ -135,6 +135,11 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   the seating group moves (seats, tables, footstools, lamps, and the TV with its cabinet). Change that with
   **Keep in place** on any piece. Each suggestion lists what's still not ideal. In a crowded room some
   suggestions will be odd, so run it again or keep more pieces in place.
+- **Room type:** in the Room tab, choose Living room or Dining room, or let the app work it out from the
+  furniture (a dining table and no TV means a dining room). In a dining room, Arrange for me puts the table
+  in the middle, or with one end or side against a wall. It sets the chairs evenly around it, facing in
+  and tucked in 10 cm, with 75 cm to pull them out, and puts the sideboard, cabinets and plants along the
+  walls. The TV rules are switched off.
 - **Layouts:** keep several arrangements of the same room and furniture, and switch between them.
 - **Room tab:** type the room size, drag the corners of an irregular room, and add doors (with their
   swing) and windows.
