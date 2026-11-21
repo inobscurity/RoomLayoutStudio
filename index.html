@@ -874,10 +874,12 @@ function planMarkup(k) {
     if (it) {
       const p = posOf(it.id), { u, v } = axes(p.r);
       for (const c of clearances(it)) if (isFinite(c.dist) && c.dist > 0.5) h += tapeLine(c.from, c.to, c.dist, k);
-      const top = V.add(p, V.add(V.mul(u, it.w / 2), V.mul(v, -it.d / 2))), diag = V.norm(V.sub(u, v)), hd = V.add(top, V.mul(diag, 24 * k));
+      const touch = matchMedia("(pointer: coarse)").matches, R = touch ? 15 : 10, reach = touch ? 42 : 28;
+      const top = V.add(p, V.add(V.mul(u, it.w / 2), V.mul(v, -it.d / 2))), diag = V.norm(V.sub(u, v)), hd = V.add(top, V.mul(diag, reach * k));
       h += `<line class="rot-l" stroke-width="${1.5 * k}" x1="${f(top.x)}" y1="${f(top.y)}" x2="${f(hd.x)}" y2="${f(hd.y)}"/>`;
-      h += `<circle class="rot-h" data-hit="rot" cx="${f(hd.x)}" cy="${f(hd.y)}" r="${9 * k}" stroke-width="${2 * k}"/>`;
-      h += `<path d="M${f(hd.x - 4 * k)} ${f(hd.y + 1 * k)}a${4 * k} ${4 * k} 0 1 1 ${4 * k} ${3 * k}" fill="none" stroke="var(--sel)" stroke-width="${1.5 * k}" pointer-events="none"/>`;
+      h += `<circle class="rot-h" cx="${f(hd.x)}" cy="${f(hd.y)}" r="${R * k}" stroke-width="${2 * k}" pointer-events="none"/>`;
+      h += `<path d="M${f(hd.x - R * 0.45 * k)} ${f(hd.y + R * 0.1 * k)}a${R * 0.45 * k} ${R * 0.45 * k} 0 1 1 ${R * 0.45 * k} ${R * 0.33 * k}" fill="none" stroke="var(--sel)" stroke-width="${1.6 * k}" pointer-events="none"/>`;
+      h += `<circle data-hit="rot" cx="${f(hd.x)}" cy="${f(hd.y)}" r="${(touch ? 30 : 16) * k}" fill="transparent" style="cursor:grab"/>`;   // a finger-sized target, drawn last so it wins over the piece
     }
   }
   if (editRoom) {
