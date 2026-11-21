@@ -311,7 +311,7 @@ details.presets summary::-webkit-details-marker { display: none; }
   </div>
   <div class="wbar" id="wbar"></div>
 </div>
-<input type="file" id="importFile" accept="application/json,.json" hidden>
+<input type="file" id="importFile" hidden>
 <div id="v3d" hidden>
   <div class="wtop v3top">
     <button class="btn sm" data-v3="close" style="background:#20292c;border-color:#2f3a3c;color:#e8eeec">Done</button>
@@ -1234,7 +1234,7 @@ function panelProject() {
   h += `</div><div class="sec"><h3>Save and share</h3>
     <div class="grid2"><button class="btn" data-act="export">Export file</button><button class="btn" data-act="import">Import file</button></div>
     <button class="btn" data-act="save-image">Save the plan as an image</button>
-    <p class="tip">Your project saves in this browser automatically. Export a file to keep a copy or open it on another device.</p>
+    <p class="tip">Your project saves in this browser automatically. Export a file to keep a copy or open it on another device. To open a project file, press <b>Import file</b> and pick it from your downloads; it replaces what's here, and you'll see “Project imported”.</p>
     <button class="btn danger" data-act="ask-new">Start a new project</button>
     ${confirmKey === "new" ? `<div class="confirm"><span>This clears the room, furniture, layouts and photos in this browser. Export first if you want a copy.</span><div class="row"><button class="btn sm danger" data-act="new">Clear and start over</button><button class="btn sm" data-act="cancel">Cancel</button></div></div>` : ""}
   </div>
@@ -1508,7 +1508,7 @@ $("#importFile").addEventListener("change", async e => {
     if (!d || !d.room || !Array.isArray(d.room.pts) || !Array.isArray(d.items) || !Array.isArray(d.layouts) || !d.layouts.length) throw new Error("shape");
     commit(); S = Object.assign(blankProject(), d, { isExample: false }); if (!S.layouts.find(l => l.id === S.current)) S.current = S.layouts[0].id;
     sel = null; renderAll(); fit(); save(); toast("Project imported");
-  } catch (err) { toast("That file isn't a Room Layout Studio project."); }
+  } catch (err) { toast(f.size < 200 ? "That file is empty. Download the project file again, then import it." : "That file isn't a Room Layout Studio project. Choose the .json project file."); }
 });
 
 let toastT = 0;
