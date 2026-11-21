@@ -2425,7 +2425,7 @@ function blocked(A, B, blocks, skip) {
   return false;
 }
 /* paint one flat surface from the photos: for each texel, the best photo that sees that spot unblocked */
-function paintSurface(P, blocks, nw, nh, pointAt, normal, skip, preferFacing, fill = "flat", hide = null, robust = false) {
+function paintSurface(P, blocks, nw, nh, pointAt, normal, skip, preferFacing, fill = "flat", hide = null, robust = false, extra = {}) {
   const c = document.createElement("canvas"); c.width = nw; c.height = nh;
   const g = c.getContext("2d"), im = g.createImageData(nw, nh), D = im.data, got = new Uint8Array(nw * nh);
   let sr = 0, sg = 0, sb = 0, n = 0;
@@ -2452,16 +2452,107 @@ function paintSurface(P, blocks, nw, nh, pointAt, normal, skip, preferFacing, fi
     }
     if (best) {
       const [ph, o] = best, k = (j * nw + i) * 4;
-      D[k] = ph.data[o]; D[k + 1] = ph.data[o + 1]; D[k + 2] = ph.data[o + 2]; D[k + 3] = 255; got[j * nw + i] = 1;
-      sr += D[k]; sg += D[k + 1]; sb += D[k + 2]; n++;
+      D[k] = ph.data[o]; D[k + 1] = ph.data[o + 1]; D[k + 2] = ph.data[o + 2]; got[j * nw + i] = 1;
+      if (extra.cutout && extra.cutout(pt, ph, [D[k], D[k + 1], D[k + 2]])) D[k + 3] = 0;   // it's the room behind, not the piece
+      else { D[k + 3] = 255; sr += D[k]; sg += D[k + 1]; sb += D[k + 2]; n++; }
     }
   }
   const mean = n ? [sr / n, sg / n, sb / n] : null;
   let median = null;
-  if (n) { const ch = [[], [], []]; for (let q = 0; q < nw * nh; q += Math.max(1, Math.floor(nw * nh / 3000))) if (got[q]) for (let c = 0; c < 3; c++) ch[c].push(D[q * 4 + c]); median = ch.map(a => { a.sort((x, y) => x - y); return a[a.length >> 1]; }); }
- if (n) (fill === "boards" ? fillBoards : fillFlat)(D, got, nw, nh);
+  if (n) { const ch = [[], [], []]; for (let q = 0; q < nw * nh; q += Math.max(1, Math.floor(nw * nh / 3000))) if (got[q] && D[q * 4 + 3]) for (let c = 0; c < 3; c++) ch[c].push(D[q * 4 + c]); median = ch.map(a => { a.sort((x, y) => x - y); return a[a.length >> 1]; }); }
+  const raw = extra.keepRaw ? { D: D.slice(), got: got.slice() } : null;
+  if (n && fill) (fill === "boards" ? fillBoards : fillFlat)(D, got, nw, nh);
   g.putImageData(im, 0, 0);
-  return { canvas: c, coverage: n / (nw * nh), mean, median };
+  return { canvas: c, coverage: n / (nw * nh), mean, median, raw, w: nw, h: nh };
+}
+/* the whole floor tiled from one clean patch of the real boards; strips along the boards get random offsets so it doesn't repeat in a grid */
+function tiledFloor(F) {
+  const { w, h } = F, D = F.raw.D, got = F.raw.got, lum = i => D[i * 4] + D[i * 4 + 1] + D[i * 4 + 2];
+  let gx = 0, gy = 0;
+  for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) { const i = y * w + x; if (got[i] && got[i + 1]) gx += Math.abs(lum(i + 1) - lum(i)); if (got[i] && got[i + w]) gy += Math.abs(lum(i + w) - lum(i)); }
+  const alongY = gx > gy;
+  let size = Math.max(16, Math.min(96, Math.floor(Math.min(w, h) / 2.5)));
+  const all = []; for (let i = 0; i < w * h; i += 7) if (got[i]) all.push(lum(i)); all.sort((a, b2) => a - b2);
+  const typical = all.length ? all[all.length >> 1] : 300;
+  let best = null;
+  for (; size >= 16 && !best; size = Math.floor(size * 0.75)) for (let y = 0; y + size <= h; y += 4) for (let x = 0; x + size <= w; x += 4) {
+    let miss = 0, sum = 0, n = 0, bright = 0, edge = 0;
+    for (let j = 0; j < size - 1; j += 2) for (let i = 0; i < size - 1; i += 2) {
+      const q = (y + j) * w + x + i; if (!got[q] || !got[q + 1] || !got[q + w]) { miss++; continue; }
+      const L = lum(q); sum += L; n++; if (L > 1.35 * typical) bright++;
+      edge += Math.abs(lum(q + 1) - L) + Math.abs(lum(q + w) - L);       // board joints and grain: sharp, not smeared
+    }
+    if (!n || miss > n * 0.02 || bright > n * 0.004) continue;  // nearly all seen, no glare or paper in the sample
+    const quarter = (qx, qy) => { let t = 0, c = 0; for (let j = qy; j < qy + size / 2; j += 3) for (let i = qx; i < qx + size / 2; i += 3) { const q = (y + j) * w + x + i; if (got[q]) { t += lum(q); c++; } } return c ? t / c : 0; };
+    const qs = [quarter(0, 0), quarter(size / 2 | 0, 0), quarter(0, size / 2 | 0), quarter(size / 2 | 0, size / 2 | 0)];
+    if (Math.max(...qs) > 1.18 * Math.min(...qs)) continue;   // a shadow or a patch of light across it
+    const mean = sum / n, v = -edge / n * 40;
+    const score = v + (mean - typical) ** 2 * 0.5;           // sharp, and the floor's typical brightness
+    if (!best || score < best.s) best = { x, y, s: score, size };
+  }
+  if (best) size = best.size;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  if (!best) { g.fillStyle = F.median ? `rgb(${F.median.join(",")})` : "#7a4a2e"; g.fillRect(0, 0, w, h); return c; }
+  // even out the patch's light (shadow or glare gradients) so tiles join without a grid showing
+  const P2 = new Float32Array(size * size * 3), rowM = new Float32Array(size), colM = new Float32Array(size);
+  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+    const qi = (best.y + j) * w + best.x + i, q = qi * 4, o = (j * size + i) * 3;
+    if (got[qi]) for (let c2 = 0; c2 < 3; c2++) P2[o + c2] = D[q + c2];
+    else for (let c2 = 0; c2 < 3; c2++) P2[o + c2] = i ? P2[o - 3 + c2] : j ? P2[o - size * 3 + c2] : typical / 3;   // the odd unseen spot: copy its neighbour
+    const L = P2[o] + P2[o + 1] + P2[o + 2]; rowM[j] += L / size; colM[i] += L / size;
+  }
+  const avg = rowM.reduce((a, b2) => a + b2, 0) / size;
+  { // divide out broad light (blur over a sixth of the patch), so only the boards' grain and joints remain
+    const Lp = new Float32Array(size * size); for (let q = 0; q < size * size; q++) Lp[q] = P2[q * 3] + P2[q * 3 + 1] + P2[q * 3 + 2];
+    const I = new Float64Array((size + 1) * (size + 1));
+    for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) I[(j + 1) * (size + 1) + i + 1] = Lp[j * size + i] + I[j * (size + 1) + i + 1] + I[(j + 1) * (size + 1) + i] - I[j * (size + 1) + i];
+    const r = Math.max(3, Math.round(size / 6));
+    for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+      const x0 = Math.max(0, i - r), x1 = Math.min(size, i + r + 1), y0 = Math.max(0, j - r), y1 = Math.min(size, j + r + 1);
+      const blur = (I[y1 * (size + 1) + x1] - I[y0 * (size + 1) + x1] - I[y1 * (size + 1) + x0] + I[y0 * (size + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+      const k = avg / Math.max(1, blur);
+      for (let c2 = 0; c2 < 3; c2++) P2[(j * size + i) * 3 + c2] = Math.min(255, P2[(j * size + i) * 3 + c2] * k);
+    }
+  }
+  const im = g.createImageData(w, h), O = im.data, rnd = k => ((Math.sin(k * 12.9898) * 43758.5453) % 1 + 1) % 1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const strip = Math.floor((alongY ? x : y) / size), off = Math.floor(rnd(strip + 1) * size);
+    let u = alongY ? x : x + off, v = alongY ? y + off : y;
+    const tu = Math.floor(u / size), tv = Math.floor(v / size); u %= size; v %= size;
+    if (tu % 2) u = size - 1 - u; if (tv % 2) v = size - 1 - v;          // mirrored tiles join seamlessly
+    const q = (v * size + u) * 3, o = (y * w + x) * 4;
+    O[o] = P2[q]; O[o + 1] = P2[q + 1]; O[o + 2] = P2[q + 2]; O[o + 3] = 255;
+  }
+  g.putImageData(im, 0, 0); return c;
+}
+/* does this colour look like that background, allowing for one photo being brighter than another? */
+function sameSurface(a, b) {
+  const sa = a[0] + a[1] + a[2], sb = b[0] + b[1] + b[2];
+  if (sa < 60 || sb < 60) return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 30;   // very dark: tone is unreliable
+  const ratio = sa / sb; if (ratio < 0.6 || ratio > 1.65) return false;
+  return Math.hypot(a[0] / sa - b[0] / sb, a[1] / sa - b[1] / sb) < 0.035;
+}
+/* a wall in its real paint colour, with its windows cut from the photos where the plan puts them */
+function cleanWall(Wl, s, wallIndex) {
+  const { w, h } = Wl, c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d"), paint = Wl.median || [226, 223, 216];
+  g.fillStyle = `rgb(${paint.join(",")})`; g.fillRect(0, 0, w, h);
+  const im = g.getImageData(0, 0, w, h), O = im.data;
+  for (const o of S.openings) {
+    if (o.wall !== wallIndex) continue;
+    const z0 = o.type === "window" ? winSill(o) : 0, z1 = o.type === "window" ? winSill(o) + winH(o) : DOOR_H;
+    const i0 = Math.max(0, Math.floor((o.t - o.w / 2) / s.len * w)), i1 = Math.min(w, Math.ceil((o.t + o.w / 2) / s.len * w));
+    const j0 = Math.max(0, Math.floor((1 - z1 / s.H) * h)), j1 = Math.min(h, Math.ceil((1 - z0 / s.H) * h));
+    for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
+      const q = j * w + i, k = q * 4;
+      if (Wl.raw && Wl.raw.got[q]) { O[k] = Wl.raw.D[k]; O[k + 1] = Wl.raw.D[k + 1]; O[k + 2] = Wl.raw.D[k + 2]; }
+      else if (o.type === "window") { O[k] = 232; O[k + 1] = 236; O[k + 2] = 238; }
+      else { O[k] = paint[0] * 0.8; O[k + 1] = paint[1] * 0.8; O[k + 2] = paint[2] * 0.8; }
+      O[k + 3] = 255;
+    }
+  }
+  g.putImageData(im, 0, 0); return c;
 }
 /* unseen parts of a painted surface (behind furniture): plain surfaces get their most common colour */
 function fillFlat(D, got, w, h) {
@@ -2574,29 +2665,59 @@ async function buildLooks() {
     P.push({ cam: s.cam, T: s.T, sc, W: c.width, H: c.height, data: g.getImageData(0, 0, c.width, c.height).data, eye: camInRoom(s.cam, s.T).pos });
   }
   if (!P.length) return null;
-  const L0 = S.layouts[0], blocks = blocksIn(L0), roomBlocks = blocksIn(L0, 10), looks = { walls: {}, items: {}, floor: null, ceiling: null };
+  const L0 = S.layouts[0], blocks = blocksIn(L0), roomBlocks = blocksIn(L0, 10), wallBlocks = blocksIn(L0, 2), looks = { walls: {}, items: {}, floor: null, ceiling: null };
   // the reference paper on the floor, in room coordinates, so it can be left out of the floor
   const papers = photos.filter(p => p.ref && p.roomT).map(p => [[-3, -3], [p.ref.W + 3, -3], [p.ref.W + 3, p.ref.H + 3], [-3, p.ref.H + 3]].map(([x, y]) => planeToRoom({ x, y }, p.roomT)));
   const underPaper = pt => papers.some(poly => pointInPoly({ x: pt[0], y: pt[1] }, poly));
   const RES = 1.5, b = roomBox(), H = S.room.height || 250;
   v3msg.textContent = "Copying the floor from your photos…"; await tick();
   const fw = Math.round((b.x1 - b.x0) / RES), fh = Math.round((b.y1 - b.y0) / RES);
-  looks.floor = paintSurface(P, roomBlocks, fw, fh, (a, c) => [b.x0 + a * (b.x1 - b.x0), b.y0 + c * (b.y1 - b.y0), 0], [0, 0, 1], null, false, "boards", underPaper, true);
+  looks.floor = paintSurface(P, roomBlocks, fw, fh, (a, c) => [b.x0 + a * (b.x1 - b.x0), b.y0 + c * (b.y1 - b.y0), 0], [0, 0, 1], null, false, null, underPaper, true, { keepRaw: true });
+  v3msg.textContent = "Choosing a clean piece of floor…"; await tick();
+  const sharp = paintSurface(P, roomBlocks, fw, fh, (a, c) => [b.x0 + a * (b.x1 - b.x0), b.y0 + c * (b.y1 - b.y0), 0], [0, 0, 1], null, false, null, underPaper, false, { keepRaw: true });
+  looks.floorTile = tiledFloor(sharp);
   v3msg.textContent = "Copying the ceiling…"; await tick();
   looks.ceiling = paintSurface(P, roomBlocks, Math.round(fw / 4), Math.round(fh / 4), (a, c) => [b.x0 + a * (b.x1 - b.x0), b.y1 - c * (b.y1 - b.y0), H], [0, 0, -1], null, false);
   for (const s of roomSurfaces()) {
     v3msg.textContent = "Copying the walls…"; await tick();
-    looks.walls[s.key] = paintSurface(P, roomBlocks, Math.max(2, Math.round(s.len / RES)), Math.round(s.H / RES),
-      (a, c) => [s.a.x + s.e.x * a * s.len, s.a.y + s.e.y * a * s.len, (1 - c) * s.H], s.n, null, true, "flat", null, true);
+    looks.walls[s.key] = paintSurface(P, wallBlocks, Math.max(2, Math.round(s.len / RES)), Math.round(s.H / RES),
+      (a, c) => [s.a.x + s.e.x * a * s.len, s.a.y + s.e.y * a * s.len, (1 - c) * s.H], s.n, null, true, null, null, true, { keepRaw: true });
+    looks.walls[s.key].clean = cleanWall(looks.walls[s.key], s, +s.key.slice(4));
   }
+  // what's behind each piece, along a photo's line of sight: the room surface it lands on, and that surface's colour there
+  const surfs = roomSurfaces(), edgesSolid = solidEdges();
+  const behind = (E, pt) => {
+    const d = [pt[0] - E[0], pt[1] - E[1], pt[2] - E[2]]; let t = Infinity;
+    if (d[2] < -1e-6) t = Math.min(t, -E[2] / d[2]);
+    if (d[2] > 1e-6) t = Math.min(t, (H - E[2]) / d[2]);
+    for (const [a, b2] of edgesSolid) { const tw = rayHit({ x: E[0], y: E[1] }, { x: d[0], y: d[1] }, a, b2); if (tw > 1.001 && tw < t) { const z = E[2] + d[2] * tw; if (z >= 0 && z <= H) t = tw; } }
+    return isFinite(t) && t > 1.001 ? [E[0] + d[0] * t, E[1] + d[1] * t, E[2] + d[2] * t] : null;
+  };
+  const rawAt = (Sf, i, j) => { if (i < 0 || j < 0 || i >= Sf.w || j >= Sf.h) return null; const q = j * Sf.w + i; return Sf.raw && Sf.raw.got[q] ? [Sf.raw.D[q * 4], Sf.raw.D[q * 4 + 1], Sf.raw.D[q * 4 + 2]] : null; };
+  const bgAt = q => {
+    if (q[2] < 1) { if (!pointInPoly({ x: q[0], y: q[1] }, S.room.pts)) return null; const F = looks.floor; return rawAt(F, Math.floor((q[0] - b.x0) / (b.x1 - b.x0) * F.w), Math.floor((q[1] - b.y0) / (b.y1 - b.y0) * F.h)); }
+    if (q[2] > H - 1) return looks.ceiling.median;
+    for (const sf of surfs) {
+      const along = (q[0] - sf.a.x) * sf.e.x + (q[1] - sf.a.y) * sf.e.y, off = Math.abs((q[0] - sf.a.x) * sf.n[0] + (q[1] - sf.a.y) * sf.n[1]);
+      if (off < 2 && along >= 0 && along <= sf.len) {
+        const Wl = looks.walls[sf.key], seen = rawAt(Wl, Math.floor(along / sf.len * Wl.w), Math.floor((1 - q[2] / H) * Wl.h));
+        if (seen) return seen;
+        const wi = +sf.key.slice(4);   // never seen, but where the plan has a window: glass, curtains, blinds
+        if (S.openings.some(o => o.type === "window" && o.wall === wi && Math.abs(along - o.t) <= o.w / 2 + 5 && q[2] >= winSill(o) - 25 && q[2] <= winSill(o) + winH(o) + 25)) return "window";
+        return null;
+      }
+    }
+    return null;
+  };
+  const cutout = (pt, ph, col) => { const q = behind(ph.eye, pt); if (!q) return false; const bg = bgAt(q); if (bg === "window") return col[0] + col[1] + col[2] > 420 && Math.max(...col) - Math.min(...col) < 45; return !!bg && sameSurface(col, bg); };
   for (const [n, it] of S.items.entries()) {
     if (it.floor) continue;
     v3msg.textContent = `Copying the furniture (${n + 1} of ${S.items.length})…`; await tick();
     const p = inLayout(L0, () => posOf(it.id)); looks.items[it.id] = {};
     for (const f of faceList(it, p)) {
       const nw = Math.max(2, Math.min(256, Math.round(f.w))), nh = Math.max(2, Math.min(256, Math.round(f.h)));
-      const r = paintSurface(P, blocks, nw, nh, (a, c) => [0, 1, 2].map(k => f.c[k] + f.right[k] * (a - 0.5) * f.w + f.up[k] * (0.5 - c) * f.h), f.n, it.id, true);
-      looks.items[it.id][f.k] = r.coverage > 0.25 ? r : { canvas: null, mean: r.mean };
+      const r = paintSurface(P, blocks, nw, nh, (a, c) => [0, 1, 2].map(k => f.c[k] + f.right[k] * (a - 0.5) * f.w + f.up[k] * (0.5 - c) * f.h), f.n, it.id, true, "flat", null, false, { cutout });
+      looks.items[it.id][f.k] = r.coverage > 0.12 ? r : { canvas: null, mean: r.mean };
     }
   }
   V3.looks = looks; V3.looksSig = sig; v3msg.textContent = ""; return looks;
@@ -2624,14 +2745,14 @@ function buildRoom() {
   tri.forEach(t => idx.push(...t));
   const fg = new THREE.BufferGeometry(); fg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); fg.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); fg.setIndex(idx);
   let fm;
-  if (looks && looks.floor && looks.floor.coverage > 0.05) { const t = texOf(looks.floor.canvas); t.flipY = false; fm = new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }); }
+  if (looks && looks.floorTile) { const t = texOf(looks.floorTile); t.flipY = false; fm = new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }); }
   else fm = new THREE.MeshLambertMaterial({ color: rgbHex(looks && looks.floor && looks.floor.mean) ?? ROOM_COL.floor, side: THREE.DoubleSide });
   g.add(new THREE.Mesh(fg, fm));
   // walls
   for (const s of roomSurfaces()) {
     const L = looks && looks.walls[s.key], mid = [s.a.x + s.e.x * s.len / 2, s.a.y + s.e.y * s.len / 2, s.H / 2];
     const n3 = T3(s.n), right = new THREE.Vector3(0, 1, 0).cross(n3);           // as seen from inside the room
-    const mat = L && L.coverage > 0.05 ? new THREE.MeshBasicMaterial({ map: texOf(L.canvas) }) : new THREE.MeshLambertMaterial({ color: rgbHex(L && L.mean) ?? ROOM_COL.wall });
+    const mat = L && L.clean ? new THREE.MeshBasicMaterial({ map: texOf(L.clean) }) : new THREE.MeshLambertMaterial({ color: ROOM_COL.wall });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(s.len, s.H), mat); m.matrixAutoUpdate = false;
     m.matrix.makeBasis(right, new THREE.Vector3(0, 1, 0), n3).setPosition(T3(mid));
     m.userData = { mid: T3(mid), n: n3 }; g.add(m); V3.walls.push(m);
@@ -2657,7 +2778,7 @@ function buildFurniture() {
       for (const f of faceList(it, p)) {
         const F = lk && lk[f.k];
         let mat;
-        if (F && F.canvas) mat = new THREE.MeshBasicMaterial({ map: texOf(F.canvas) });
+        if (F && F.canvas) mat = new THREE.MeshBasicMaterial({ map: texOf(F.canvas), transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
         else {
           const col = rgbHex(F && F.mean) ?? rgbHex(avg) ?? (it.tv ? 0x1b1f22 : BLOCK_COLS[it.color % 6]);
           mat = new THREE.MeshLambertMaterial({ color: col });

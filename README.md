@@ -61,11 +61,14 @@ homography). Any two points you tap on the same surface can then be measured in 
   photographed.
 
 - **3D view** (**3D view** below the plan, or **Layouts → See it in 3D**). It builds the room from the plan
-  and copies its real surfaces from your linked photos. Walls, floor and ceiling are taken from whichever
-  photos see each spot, using the middle value of every photo that sees it, so clutter seen from one angle
-  and glare drop out. Where furniture stood, the walls get their paint colour and the floor is filled with
-  matching boards. Each piece of furniture is a block wearing its own pictures, front, sides and top, cut
-  from the photo that shows each side best. Sides no photo shows get the piece's own colour.
+  from your linked photos.
+  - **Walls, floor and ceiling:** walls are drawn in their real paint colour, with each window cut from the
+    photos where the plan puts it. The floor is a clean, evenly lit sample of your real boards, tiled with
+    the boards running the right way. The ceiling is plain.
+  - **Furniture:** each piece is a block wearing its own pictures, front, sides and top, cut from the photo
+    that shows each side best. Parts of a block that show the room behind the piece, not the piece itself,
+    are cut away, so pieces keep roughly their real outline. Sides no photo shows are drawn flat in the
+    piece's own colour.
   - **Viewpoints:** turn around the room, look from exactly where any photo was taken (to compare a new
     layout with the photo), or sit in any seat facing the TV.
   - **Options:** pick any layout, turn furniture off to see the bare room, and **Save image**.
