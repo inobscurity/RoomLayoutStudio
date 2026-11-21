@@ -125,6 +125,12 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   The rule of thumb is 1 to 1.6 times the screen diagonal for an immersive picture, and up to 2.5 times for
   comfortable viewing. Seats more than 30° to the side are flagged. Sofas, chairs and beds count as seats
   automatically, and any piece can be marked as one.
+- **Arrange for me** (experimental, Layouts tab): tries thousands of arrangements and adds three suggested
+  layouts. They're scored on everything fitting, doorways and windows kept clear, seats facing the TV at a
+  good distance, storage against walls, tables in front of the seats, and 60 cm walkways. By default only
+  the seating group moves (seats, tables, footstools, lamps, and the TV with its cabinet). Change that with
+  **Keep in place** on any piece. Each suggestion lists what's still not ideal. In a crowded room some
+  suggestions will be odd, so run it again or keep more pieces in place.
 - **Layouts:** keep several arrangements of the same room and furniture, and switch between them.
 - **Room tab:** type the room size, drag the corners of an irregular room, and add doors (with their
   swing) and windows.

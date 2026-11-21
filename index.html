@@ -208,6 +208,7 @@ details.presets summary::-webkit-details-marker { display: none; }
 .guide-body { display: flex; flex-direction: column; gap: 8px; line-height: 1.55; }
 .guide-body p { margin: 0; } .guide-body ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; }
 .guide-nav { justify-content: space-between; }
+.arr-progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; } .arr-progress i { display: block; height: 100%; width: 0; background: var(--tape); transition: width .2s; }
 .guide-dots { display: flex; gap: 5px; } .guide-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); } .guide-dots i.on { background: var(--ink); }
 #wiz { position: fixed; inset: 0; z-index: 30; background: #0d1112; color: #e8eeec; display: grid; grid-template-rows: auto 1fr auto; }
 .wtop { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px)); background: #161c1e; }
@@ -539,7 +540,7 @@ function validateSel() {
   else if (sel.type === "op" && !S.openings.find(o => o.id === sel.id)) sel = null;
   else if (sel.type === "wall" && !(sel.i < S.room.pts.length)) sel = null;
 }
-const layout = () => (S.current === "photo" && S.photoLayout) || S.layouts.find(l => l.id === S.current) || S.layouts[0];
+const layout = () => (TEMP_LAYOUT && S.current === TEMP_LAYOUT.id && TEMP_LAYOUT) || (S.current === "photo" && S.photoLayout) || S.layouts.find(l => l.id === S.current) || S.layouts[0];
 /* Where everything stood when the photos were taken. Kept apart from the layouts, so moving furniture in
    any layout never changes which part of a photo shows each piece. Pieces missing from it are copied in
    from the first layout. */
@@ -1132,7 +1133,8 @@ function panelFurniture() {
       <div class="sec" style="gap:6px"><h3>This piece is</h3>
         <label class="toggle"><input type="checkbox" id="f-tv" data-f="tv" ${it.tv ? "checked" : ""}> A TV or screen</label>
         <label class="toggle"><input type="checkbox" id="f-seat" data-f="seat" ${isSeat(it) ? "checked" : ""} ${it.tv || it.floor ? "disabled" : ""}> Somewhere people sit (for TV viewing distance)</label>
-        <label class="toggle"><input type="checkbox" id="f-floor" data-f="floor" ${it.floor ? "checked" : ""}> A rug (lies on the floor; other furniture can stand on it)</label>
+        <label class="toggle"><input type="checkbox" id="f-lock" data-f="locked" ${isLocked(it) ? "checked" : ""}> Keep in place when using Arrange for me</label>
+      <label class="toggle"><input type="checkbox" id="f-floor" data-f="floor" ${it.floor ? "checked" : ""}> A rug (lies on the floor; other furniture can stand on it)</label>
       </div>
       <div class="row">
         <button class="btn sm" data-act="rot90">Rotate 90°</button>
@@ -1251,9 +1253,25 @@ function panelRoom() {
   <div class="sec"><label class="toggle"><input type="checkbox" id="r-snap" data-act="snap" ${S.snap ? "checked" : ""}> Snap furniture to walls</label></div>`;
   return h;
 }
+function arrangeSection() {
+  const L = layout(), rep = ARR.report && ARR.report.find(r => r.id === L.id);
+  const locked = S.items.filter(i => !i.floor && !i.on && isLocked(i)).map(i => i.name);
+  let h = `<div class="sec"><h3>Arrange for me <span class="pill" style="background:var(--line);color:var(--ink)">Experimental</span></h3><div class="card">
+    <p class="tip" style="margin:0">Tries thousands of arrangements and makes three suggestions, scored on: everything fitting with nothing in front of doorways or the window, seats facing the TV at a good distance, pieces like cabinets against walls, tables in front of the seats, and 60 cm walkways. Your other layouts stay as they are. Treat the suggestions as ideas to start from: in a full room some will be odd, so press it again for new ones, and keep more pieces in place to focus it.</p>
+    ${locked.length ? `<p class="tip" style="margin:0">Staying put: ${esc(locked.join(", "))}. Change this with <b>Keep in place</b> in a piece's settings.</p>` : ""}
+    <button class="btn tape" data-act="arrange" ${ARR.busy ? "disabled" : ""}>${ARR.busy ? "Working…" : "Arrange for me"}</button>
+    <div class="arr-progress" id="arr-progress" ${ARR.busy ? "" : "hidden"}><i></i></div>`;
+  if (rep) {
+    const moving = S.items.filter(i => !i.floor && !i.on && !isLocked(i)).map(i => i.name).sort((x, y) => y.length - x.length);
+    const issues = rep.why.filter(w => w[1] && moving.some(n => w[1].includes(n)));   // leave out problems only fixed pieces have
+    h += issues.length ? `<div class="sec" style="gap:4px"><h3>Still not ideal in ${esc(L.name)}</h3>${issues.slice(0, 5).map(w => `<div class="warnline">● ${esc(w[1])}</div>`).join("")}</div>`
+      : `<p class="tip" style="margin:0"><b>${esc(L.name)}</b> meets every rule.</p>`;
+  }
+  return h + `</div></div>`;
+}
 function panelLayouts() {
   const L = layout();
-  let h = `<div class="sec"><h3>Layouts</h3><div class="list">${S.layouts.map(l => `<button class="li" data-act="pick-layout" data-id="${l.id}" aria-current="${l.id === L.id}"><span class="t"><b>${esc(l.name)}</b><span>${l.id === L.id ? "On the plan" : "Tap to show"}</span></span></button>`).join("")}</div></div>
+  let h = arrangeSection() + `<div class="sec"><h3>Layouts</h3><div class="list">${S.layouts.map(l => `<button class="li" data-act="pick-layout" data-id="${l.id}" aria-current="${l.id === L.id}"><span class="t"><b>${esc(l.name)}</b><span>${l.id === L.id ? "On the plan" : "Tap to show"}</span></span></button>`).join("")}</div></div>
   <div class="sec"><h3>This layout</h3><div class="card">
     <label class="f">Name<input class="in" id="l-name" data-l="name" value="${esc(L.name)}"></label>
     <div class="row"><button class="btn sm" data-act="dup-layout">Copy as a new idea</button><button class="btn sm" data-act="save-image">Save as image</button><button class="btn sm" data-act="open-3d">See it in 3D</button>
@@ -1348,6 +1366,7 @@ pbody.addEventListener("click", e => {
     case "del-op": commit(); S.openings = S.openings.filter(o => o !== op); sel = null; renderAll(); save(); break;
     case "snap": S.snap = b.checked; save(); break;
     case "pick-layout": S.current = b.dataset.id; confirmKey = null; renderAll(); save(); break;
+    case "arrange": arrangeForMe(); renderPanel(); break;
     case "dup-layout": { commit(); const L = layout(), n = { id: uid(), name: L.name + " (idea)", pos: JSON.parse(JSON.stringify(L.pos)) }; S.layouts.push(n); S.current = n.id; renderAll(); save(); setTimeout(() => $("#l-name")?.select(), 0); break; }
     case "ask-del-layout": confirmKey = "layout"; renderPanel(); break;
     case "del-layout": commit(); S.layouts = S.layouts.filter(l => l.id !== S.current); S.current = S.layouts[0].id; confirmKey = null; renderAll(); save(); break;
@@ -1386,6 +1405,7 @@ pbody.addEventListener("change", e => {
     if (k === "name") { commit(); it.name = t.value.trim() || "Untitled"; }
     else if (k === "floor") { commit(); it.floor = t.checked; if (it.floor) { childrenOf(it.id).forEach(c => unstack(c, true)); unstack(it, true); } }
     else if (k === "seat") { commit(); it.seat = t.checked; }
+    else if (k === "locked") { commit(); it.locked = t.checked; }
     else if (k === "shape") { commit(); it.shape = t.value === "auto" ? undefined : t.value; }
     else if (k === "tv") { commit(); if (t.checked) it.tv = { size: tvSizeFromWidth(it.w) }; else delete it.tv; }
     else if (k === "tvsize") { const v = parseFloat(String(t.value).replace(/[^\d.]/g, "")); if (v > 0 && v < 200) { commit(); it.tv.size = Math.round(v); } else toast("Type the screen size in inches, for example 55."); }
@@ -1430,6 +1450,261 @@ document.querySelector(".stage").addEventListener("click", e => {
   if (b.dataset.act === "guide") openGuide();
   if (b.dataset.act === "dismiss-banner") { S.bannerHidden = true; $("#banner").hidden = true; save(); }
 });
+
+/* ================================================================
+   Arrange for me: tries thousands of arrangements (simulated annealing)
+   and keeps the best few. Lower cost is better; each rule adds to it.
+   ================================================================ */
+var TEMP_LAYOUT = null;   // var: layout() may run before this line
+const ARR = { busy: false, report: null };
+const WALL_SHAPES = new Set(["cabinet", "bookcase", "wardrobe", "trunks", "record"]);
+/* by default only the seating group moves: seats, tables, footstools, lamps and the TV's cabinet */
+const MOVES_BY_DEFAULT = new Set(["sofa", "recliner", "armchair", "tubchair", "table", "footstool", "ottoman", "floorlamp", "treelamp", "plant"]);
+const isLocked = it => it.locked !== undefined ? it.locked : !(MOVES_BY_DEFAULT.has(shapeOf(it)) || childrenOf(it.id).some(c => c.tv) || it.tv);
+function clipConvex(subject, clip) {           // Sutherland–Hodgman, both convex, either winding
+  let out = subject, sgn = Math.sign(polyArea(clip)) || 1;
+  for (let i = 0; i < clip.length && out.length; i++) {
+    const a = clip[i], b = clip[(i + 1) % clip.length], inp = out; out = [];
+    const side = p => sgn * V.cross(V.sub(b, a), V.sub(p, a));
+    for (let j = 0; j < inp.length; j++) {
+      const P = inp[j], Q = inp[(j + 1) % inp.length], sp = side(P), sq = side(Q);
+      if (sp >= 0) out.push(P);
+      if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); out.push(V.add(P, V.mul(V.sub(Q, P), t))); }
+    }
+  }
+  return out;
+}
+const overlapArea = (A, B) => { const c = clipConvex(A, B); return c.length > 2 ? Math.abs(polyArea(c)) : 0; };
+function distToPoly(p, pts) { return Math.min(...edges(pts).map(([a, b]) => { const e = V.sub(b, a), u = clamp(V.dot(V.sub(p, a), e) / Math.max(1e-9, V.dot(e, e)), 0, 1); return V.dist(p, V.add(a, V.mul(e, u))); })); }
+/* how far a ray from p in direction d travels before reaching a real wall */
+function toWall(p, d, segs) { let t = Infinity; for (const [a, b] of segs) t = Math.min(t, rayHit(p, d, a, b)); return t; }
+
+function arrangeContext() {
+  const items = S.items.filter(i => !i.floor), movable = items.filter(i => !i.on && !isLocked(i));
+  const tv = S.items.find(i => i.tv && i.tv.size > 0), seats = items.filter(isSeat);
+  const walls = solidEdges(), b = roomBox(), G = 15, nx = Math.ceil((b.x1 - b.x0) / G), ny = Math.ceil((b.y1 - b.y0) / G);
+  const inside = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) inside[j * nx + i] = pointInPoly({ x: b.x0 + (i + 0.5) * G, y: b.y0 + (j + 0.5) * G }, S.room.pts) ? 1 : 0;
+  // places people must be able to reach: doorways, openings, the open-plan sides, and the front of storage
+  const access = [];
+  for (const o of S.openings) if (o.type !== "window") { const w = wallInfo(o.wall); access.push({ ps: [V.add(opCenter(o), V.mul(w.nIn, 25))], what: o.type === "door" ? "the door" : "the opening" }); }
+  S.room.pts.forEach((a, i) => { if (!isOpen(i)) return; const w = wallInfo(i), ps = []; for (let t = 30; t < w.L - 20; t += 30) ps.push(V.add(V.add(w.a, V.mul(w.e, t)), V.mul(w.nIn, 25))); if (ps.length) access.push({ ps, what: "the open side" }); });
+  // keep-clear zones in front of doorways and openings (80 cm into the room)
+  const zones = S.openings.filter(o => o.type !== "window").map(o => { const w = wallInfo(o.wall), c = opCenter(o), h = o.w / 2; return [V.add(c, V.mul(w.e, -h)), V.add(c, V.mul(w.e, h)), V.add(V.add(c, V.mul(w.e, h)), V.mul(w.nIn, 80)), V.add(V.add(c, V.mul(w.e, -h)), V.mul(w.nIn, 80))]; });
+  const mainSeat = [...seats].sort((a, b) => b.w * b.d - a.w * a.d)[0] || null;
+  return { items, movable, tv, seats, mainSeat, walls, b, G, nx, ny, inside, access, zones };
+}
+function arrangeCost(C, detail) {
+  let cost = 0; const why = detail ? [] : null, add = (v, msg) => { cost += v; if (why && v > 0.5) why.push([v, msg]); };
+  const polys = new Map(C.items.map(it => [it.id, itemPoly(it, 0.5)]));
+  // 1. everything fits: no overlaps, inside the room, doorways clear
+  for (let a = 0; a < C.items.length; a++) for (let c = a + 1; c < C.items.length; c++) {
+    const A = C.items[a], B = C.items[c]; if (A.on === B.id || B.on === A.id || A.on || B.on) continue;
+    const ov = overlapArea(polys.get(A.id), polys.get(B.id)); if (ov > 1) add(300 + ov / 5, `${A.name} overlaps ${B.name}`);
+  }
+  for (const it of C.items) {
+    const P = polys.get(it.id); let out = 0;
+    for (const p of P) if (!pointInPoly(p, S.room.pts)) out += distToPoly(p, S.room.pts);
+    if (out > 0) add(300 + out * 5, `${it.name} is outside the room`);
+    for (const Z of C.zones) { const ov = overlapArea(P, Z); if (ov > 50) add(300 + ov / 10, `${it.name} blocks a doorway`); }
+    if (windowBlock(it)) add(40, `${it.name} covers part of a window`);
+  }
+  // 2. pieces that belong against a wall have their back to one
+  for (const it of C.items) {
+    if (it.on || !WALL_SHAPES.has(shapeOf(it))) continue;
+    const p = posOf(it.id), { v } = axes(p.r), back = V.add(p, V.mul(v, -it.d / 2 + 3)), d = toWall(back, V.mul(v, -1), C.walls) - 3;   // from just in front of the back
+    if (d > 2) add(Math.min(150, d) * 1.8 + 15, `${it.name} isn't against a wall`);
+  }
+  const OPEN_OK = new Set(["sofa", "recliner", "armchair", "tubchair", "table", "footstool", "ottoman", "box"]);
+  for (const it of C.items) {
+    if (it.on) continue; const sh = shapeOf(it); if (OPEN_OK.has(sh) || WALL_SHAPES.has(sh)) continue;
+    const P = polys.get(it.id), d = Math.min(...P.map(q => distToPoly(q, S.room.pts)));   // lamps, plants and the like keep near a wall
+    if (d > 35) add((d - 35) * 0.8 + 8, `${it.name} stands out in the room`);
+  }
+  // storage needs room in front to open it: 60 cm clear (low pieces can't stand there either)
+  for (const it of C.items) {
+    if (it.on || !WALL_SHAPES.has(shapeOf(it))) continue;
+    const p = posOf(it.id), { v } = axes(p.r), Z = rectCorners(V.add(p, V.mul(v, it.d / 2 + 30)), it.w - 10, 58, p.r);
+    const reachOver = shapeOf(it) === "bookcase" && it.h > 120;              // you can reach tall shelves over a low sofa back
+    for (const o of C.items) { if (o.id === it.id || o.on || (reachOver && topOf(o) <= 100)) continue; const ov = overlapArea(polys.get(o.id), Z); if (ov > 40) add(150 + ov / 20, `${o.name} is in front of ${it.name}`); }
+  }
+  // seats square to the walls (a small cost for an angle), recliners need room behind to recline
+  for (const s of C.seats) {
+    const sp = posOf(s.id), off = Math.abs(((sp.r % 90) + 90) % 90); if (Math.min(off, 90 - off) > 1) add(10, "");
+    if (shapeOf(s) === "recliner") { const { v } = axes(sp.r), Z = rectCorners(V.add(sp, V.mul(v, -s.d / 2 - 15)), s.w - 10, 28, sp.r);
+      let blocked = Z.some(q => !pointInPoly(q, S.room.pts)); for (const o of C.items) if (!blocked && o.id !== s.id && !o.on && overlapArea(polys.get(o.id), Z) > 30) blocked = true;
+      if (blocked) add(18, `${s.name} has no room to recline`); }
+  }
+  // 3. TV viewing: every seat faces the screen at a good distance, not off to the side, with a clear view
+  if (C.tv) {
+    const diag = C.tv.tv.size * 2.54, { p: F, dir } = tvFront(C.tv);
+    for (const s of C.seats) {
+      const sp = posOf(s.id), { v } = axes(sp.r), vec = V.sub(F, sp), dist = V.len(vec), r = dist / diag;
+      if (r < 1) add((1 - r) * 80, `${s.name} is too close to the TV`); else if (r > 2.1) add((r - 2.1) * 70, `${s.name} is far from the TV`);
+      add((r - 1.6) ** 2 * 6, "");
+      const off = Math.acos(clamp(V.dot(V.norm(V.mul(vec, -1)), dir), -1, 1)) / DEG; if (off > 35) add((off - 35) * 1.2, `${s.name} sees the TV from the side`);
+      const main = s === C.mainSeat, face = Math.acos(clamp(V.dot(v, V.norm(vec)), -1, 1)) / DEG;
+      if (face > 25) add((face - 25) * (main ? 3.5 : 1.2), `${s.name} doesn't face the TV`);
+      for (const o of C.items) {
+        if (o.id === s.id || o.id === C.tv.id || o.id === C.tv.on || topOf(o) < 75) continue;
+        const P = polys.get(o.id); if (P.some((q, i) => segsCross(sp, F, q, P[(i + 1) % 4]))) { add(main ? 160 : 70, `${o.name} blocks the view from ${s.name}`); break; }
+      }
+    }
+  }
+  // 4. tables and footstools sit in front of the seating
+  for (const it of C.items) {
+    const sh = shapeOf(it); if (!["table", "footstool", "ottoman"].includes(sh) || it.on || !C.seats.length) continue;
+    const c = posOf(it.id); let best = Infinity;
+    if (sh === "table" && C.mainSeat) {   // the coffee table belongs in front of the main seat
+      const sp = posOf(C.mainSeat.id), { u, v } = axes(sp.r), rel = V.sub(c, sp), ahead = V.dot(rel, v), side = Math.abs(V.dot(rel, u));
+      const want = C.mainSeat.d / 2 + 45 + Math.min(it.w, it.d) / 2;
+      add(Math.abs(ahead - want) * 0.8 + Math.max(0, side - C.mainSeat.w / 4) * 0.8 + (ahead < 0 ? 150 : 0), ahead < 0 ? `${it.name} is behind ${C.mainSeat.name}` : Math.abs(ahead - want) > 30 || side > C.mainSeat.w / 4 + 30 ? `${it.name} isn't in front of ${C.mainSeat.name}` : "");
+      if (C.tv) { const dT = V.dist(c, tvFront(C.tv).p); if (dT < 110) add((110 - dT) * 0.8, `${it.name} is too close to the TV`); }
+      continue;
+    }
+    for (const s of C.seats) { const sp = posOf(s.id), { v } = axes(sp.r), front = V.add(sp, V.mul(v, s.d / 2)); best = Math.min(best, V.dist(c, front) - Math.min(it.w, it.d) / 2); }
+    const want = sh === "table" ? 45 : 35; if (best > want + 25) add((best - want - 25) * 1.0, `${it.name} is far from the seats`);
+    if (sh === "table" && C.tv) { const dT = V.dist(c, tvFront(C.tv).p); if (dT < 110) add((110 - dT) * 0.8, `${it.name} is too close to the TV`); }
+  }
+  // lamps beside a seat
+  for (const it of C.items) { if (!["floorlamp", "treelamp"].includes(shapeOf(it)) || !C.seats.length) continue; const c = posOf(it.id); const d = Math.min(...C.seats.map(s => V.dist(c, posOf(s.id)) - Math.max(s.w, s.d) / 2)); if (d > 60) add((d - 60) * 0.15, `${it.name} isn't near a seat`); }
+  // 5. walkways: 60 cm paths between doorways, openings and the open side
+  if (C.access.length > 1) {
+    const { G, nx, ny, b, inside } = C, free = inside.slice(), R = 30;
+    for (const it of C.items) {
+      if (it.on || topOf(it) < 12) continue;
+      const P = itemPoly(it, -R), xs = P.map(q => q.x), ys = P.map(q => q.y);
+      const i0 = Math.max(0, Math.floor((Math.min(...xs) - b.x0) / G)), i1 = Math.min(nx - 1, Math.floor((Math.max(...xs) - b.x0) / G));
+      const j0 = Math.max(0, Math.floor((Math.min(...ys) - b.y0) / G)), j1 = Math.min(ny - 1, Math.floor((Math.max(...ys) - b.y0) / G));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (free[j * nx + i] && pointInPoly({ x: b.x0 + (i + 0.5) * G, y: b.y0 + (j + 0.5) * G }, P)) free[j * nx + i] = 0;
+    }
+    const cellOf = p => { const i = Math.floor((p.x - b.x0) / G), j = Math.floor((p.y - b.y0) / G); return i >= 0 && j >= 0 && i < nx && j < ny ? j * nx + i : -1; };
+    const starts = C.access.map(a => a.ps.map(cellOf).filter(c => c >= 0 && free[c]));
+    const seen = new Uint8Array(nx * ny), s0 = (starts.find(g => g.length) || [])[0];
+    if (s0 === undefined) add(300, "No clear way into the room");
+    else {
+      const q = [s0]; seen[s0] = 1;
+      while (q.length) { const c = q.pop(), i = c % nx, j = (c / nx) | 0; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const I = i + di, J = j + dj; if (I < 0 || J < 0 || I >= nx || J >= ny) continue; const k = J * nx + I; if (free[k] && !seen[k]) { seen[k] = 1; q.push(k); } } }
+      C.access.forEach((a, n) => { if (!starts[n].some(c => seen[c])) add(300, `No clear 60 cm path to ${a.what}`); });
+      // the walkway also has to reach the seats (to their front or either side)
+      for (const s of C.seats) { const sp = posOf(s.id), { u, v } = axes(sp.r);
+        const spots = [V.add(sp, V.mul(v, s.d / 2 + 35)), V.add(sp, V.mul(u, s.w / 2 + 35)), V.add(sp, V.mul(u, -s.w / 2 - 35))].map(cellOf);
+        if (!spots.some(f => f >= 0 && seen[f])) add(120, `No clear way to ${s.name}`); }
+    }
+  }
+  return detail ? { cost, why: why.sort((a, b) => b[0] - a[0]) } : cost;
+}
+/* one annealing run from a starting layout; returns the best positions found */
+async function anneal(C, startPos, iters, onTick, refine = false) {
+  const L = { id: "arrange-tmp", name: "", pos: JSON.parse(JSON.stringify(startPos)) };
+  TEMP_LAYOUT = L; const keepCur = S.current; S.current = L.id;
+  try {
+    const b = C.b, rnd = (a, z) => a + Math.random() * (z - a), seatsSet = new Set(C.seats.map(s => s.id)), M = C.movable;
+    if (!M.length) return { pos: L.pos, cost: arrangeCost(C) };
+    let cur = arrangeCost(C), best = cur, bestPos = JSON.parse(JSON.stringify(L.pos));
+    for (let k = 0; k < iters; k++) {
+      const T0 = refine ? 6 : 40, T = T0 * Math.pow(0.3 / T0, k / iters), it = M[Math.floor(Math.random() * M.length)], p = L.pos[it.id], sh = shapeOf(it);
+      const saved = [[it.id, { ...p }]];
+      let m = Math.random(); if (refine && m >= 0.45 && m < 0.58) m = 0.3;   // no jumps across the room when fine-tuning
+      if (m < 0.45) { const s = 6 + 70 * T / 40; p.x += rnd(-s, s); p.y += rnd(-s, s); }
+      else if (m < 0.58) { p.x = rnd(b.x0 + 20, b.x1 - 20); p.y = rnd(b.y0 + 20, b.y1 - 20); }
+      else if (m < 0.72) p.r = normDeg(p.r + (seatsSet.has(it.id) && Math.random() < 0.5 ? (Math.random() < 0.5 ? 15 : -15) : 90 * (1 + Math.floor(Math.random() * 3))));
+      else if (m < 0.86) {                                    // back against a random real wall
+        const w = C.walls[Math.floor(Math.random() * C.walls.length)];
+        if (w) { const [a, z] = w, e = V.norm(V.sub(z, a)), n = { x: -e.y, y: e.x }, len = V.dist(a, z), t = rnd(Math.min(it.w / 2, len / 2), Math.max(len / 2, len - it.w / 2));
+          const c = V.add(V.add(a, V.mul(e, t)), V.mul(n, it.d / 2 + 0.5)); p.x = c.x; p.y = c.y; p.r = normDeg(Math.atan2(n.y, n.x) / DEG - 90); }
+      } else if (m < 0.93 && seatsSet.has(it.id) && C.tv) { const F = tvFront(C.tv).p, d = V.sub(F, p); p.r = normDeg(Math.round((Math.atan2(d.y, d.x) / DEG - 90) / 15) * 15); }
+      else { const o = M[Math.floor(Math.random() * M.length)];   // swap places with another piece
+        if (o && o !== it) { const q = L.pos[o.id]; saved.push([o.id, { ...q }]); const t = { x: q.x, y: q.y }; q.x = p.x; q.y = p.y; p.x = t.x; p.y = t.y; } }
+      if (!seatsSet.has(it.id)) p.r = normDeg(Math.round(p.r / 90) * 90);
+      p.x = Math.round(p.x); p.y = Math.round(p.y);
+      const c2 = arrangeCost(C);
+      if (c2 <= cur || Math.random() < Math.exp((cur - c2) / T)) { cur = c2; if (cur < best - 1e-6) { best = cur; bestPos = JSON.parse(JSON.stringify(L.pos)); } }
+      else for (const [id, q] of saved) Object.assign(L.pos[id], q);
+      if (k % 300 === 0) await onTick(k / iters);
+    }
+    return { pos: bestPos, cost: best };
+  } finally { S.current = keepCur; TEMP_LAYOUT = null; }
+}
+/* Designed starting points, the way a person would lay out a living room: TV against a wall, the main seat
+   facing it at a good distance, other seats in a row with it or flanking the sides, the coffee table in
+   between, storage along the walls, lamps beside seats. */
+function designedStarts(C, basePos) {
+  const out = [], tv = C.tv, cab = tv ? itemById(tv.on) : null, movable = new Set(C.movable.map(i => i.id));
+  if (!tv) return out;
+  const tvPiece = cab && movable.has(cab.id) ? cab : movable.has(tv.id) ? tv : null;   // what carries the TV
+  const seats = C.seats.filter(s => movable.has(s.id)).sort((a, b) => b.w * b.d - a.w * a.d);
+  if (!tvPiece || !seats.length) return out;
+  const diag = tv.tv.size * 2.54, main = seats[0], rest = seats.slice(1);
+  const faceDeg = dir => normDeg(Math.atan2(dir.y, dir.x) / DEG - 90);       // rotation whose front (+v) points along dir
+  S.room.pts.forEach((_, wi) => {
+    if (isOpen(wi)) return;
+    const w = wallInfo(wi); if (w.L < tvPiece.w + 10) return;
+    for (const frac of [0.5, 0.35, 0.65]) {
+      const t = clamp(w.L * frac, tvPiece.w / 2 + 2, w.L - tvPiece.w / 2 - 2);
+      for (const pattern of ["row", "flank", "ell-left", "ell-right"]) {
+        const pos = JSON.parse(JSON.stringify(basePos)), n = w.nIn, e = w.e;
+        const cc = V.add(V.add(w.a, V.mul(e, t)), V.mul(n, tvPiece.d / 2 + 0.5));
+        pos[tvPiece.id] = { x: cc.x, y: cc.y, r: faceDeg(n) };
+        const F = V.add(cc, V.mul(n, tvPiece.d / 2));
+        // the main seat faces the TV, as far as fits up to 1.7 x the screen diagonal
+        let dist = Math.min(1.7 * diag, toWall(F, n, C.walls) - main.d / 2 - 5);
+        if (!isFinite(dist)) dist = 1.7 * diag;
+        dist = Math.max(dist, 1.0 * diag);
+        const mc = V.add(F, V.mul(n, dist + main.d / 2 * 0));
+        const place = (it, c, dir) => { pos[it.id] = { x: Math.round(c.x), y: Math.round(c.y), r: faceDeg(dir) }; };
+        place(main, mc, V.mul(n, -1));
+        const sideGap = 8;
+        if (pattern === "row") { let off = main.w / 2 + sideGap; rest.forEach((s, i) => { const sgn = i % 2 ? -1 : 1, x = off + s.w / 2; place(s, V.add(mc, V.mul(e, sgn * x)), V.mul(n, -1)); if (i % 2) off = x + s.w / 2 + sideGap; }); }
+        else {
+          const sides = pattern === "flank" ? [1, -1] : pattern === "ell-left" ? [1] : [-1];
+          let k = 0;
+          rest.forEach(s => {
+            const sgn = sides[k % sides.length], row = Math.floor(k / sides.length); k++;
+            const along = main.w / 2 + s.d / 2 + 15, depth = dist - main.d / 2 - s.w / 2 - 10 - row * (s.w + sideGap);
+            place(s, V.add(V.add(F, V.mul(n, depth)), V.mul(e, sgn * along)), V.mul(e, -sgn));
+          });
+        }
+        // coffee table in front of the main seat, footstools in front of the other seats
+        const tables = C.movable.filter(i => shapeOf(i) === "table"), stools = C.movable.filter(i => ["footstool", "ottoman"].includes(shapeOf(i)));
+        tables.forEach((tb, i) => { const c = V.add(mc, V.mul(n, -(main.d / 2 + 45 + tb.d / 2))); pos[tb.id] = { x: Math.round(c.x + e.x * i * 30), y: Math.round(c.y + e.y * i * 30), r: faceDeg(V.mul(n, -1)) }; });
+        stools.forEach((st, i) => { const s = rest[i % Math.max(1, rest.length)] || main, sp = pos[s.id], { v } = axes(sp.r), c = V.add(sp, V.mul(v, s.d / 2 + 15 + st.d / 2)); pos[st.id] = { x: Math.round(c.x), y: Math.round(c.y), r: sp.r }; });
+        // lamps at the ends of the main seat
+        C.movable.filter(i => ["floorlamp", "treelamp"].includes(shapeOf(i))).forEach((lp, i) => { const sgn = i % 2 ? -1 : 1, c = V.add(mc, V.add(V.mul(e, sgn * (main.w / 2 + lp.w / 2 + 5)), V.mul(n, main.d / 4))); pos[lp.id] = { x: Math.round(c.x), y: Math.round(c.y), r: 0 }; });
+        out.push(pos);
+      }
+    }
+  });
+  return out;
+}
+const posDiff = (A, B, ids) => ids.reduce((s, id) => s + V.dist(A[id], B[id]), 0);
+/* the button: several runs, the three best distinct results become layouts */
+async function arrangeForMe() {
+  if (ARR.busy) return; ARR.busy = true;
+  const bar = $("#arr-progress"); if (bar) bar.hidden = false;
+  try {
+    const C = arrangeContext(), base = layout(), ids = C.movable.map(i => i.id);
+    if (!ids.length) { toast("Everything is set to stay put. Untick “Keep in place” on some pieces."); return; }
+    // score every designed start quickly, then fine-tune the most promising; a couple of free searches as well
+    const starts = designedStarts(C, base.pos), quick = [];
+    for (const st of starts) { TEMP_LAYOUT = { id: "arrange-tmp", pos: st }; const keep = S.current; S.current = "arrange-tmp"; try { quick.push({ st, c: arrangeCost(C) }); } finally { S.current = keep; TEMP_LAYOUT = null; } }
+    quick.sort((a, b) => a.c - b.c);
+    const jobs = quick.slice(0, 14).map(q => ({ st: q.st, refine: true, iters: 5000 }));
+    jobs.push({ st: JSON.parse(JSON.stringify(base.pos)), refine: true, iters: 4000 });   // and the current arrangement, tidied
+    const results = [];
+    for (const [r, job] of jobs.entries())
+      results.push(await anneal(C, job.st, job.iters, async f => { if (bar) bar.firstElementChild.style.width = `${Math.round((r + f) / jobs.length * 100)}%`; await tick(); }, job.refine));
+    results.sort((a, b) => a.cost - b.cost);
+    const picks = [];
+    for (const res of results) if (picks.length < 3 && picks.every(p => posDiff(p.pos, res.pos, ids) > 60 * ids.length / 4)) picks.push(res);
+    commit();
+    S.layouts = S.layouts.filter(l => !l.suggested);
+    const made = picks.map((res, i) => { const L = { id: uid(), name: `Suggestion ${i + 1}`, pos: res.pos, suggested: true }; S.layouts.push(L); return L; });
+    ARR.report = made.map((L, i) => { const keep = S.current; S.current = L.id; try { return { id: L.id, ...arrangeCost(C, true) }; } finally { S.current = keep; } });
+    S.current = made[0].id; sel = null; tab = "layouts"; renderAll(); fit(); save();
+    toast(`${made.length} suggestion${made.length > 1 ? "s" : ""} made. “As it is now” is unchanged.`);
+  } finally { ARR.busy = false; const b2 = $("#arr-progress"); if (b2) b2.hidden = true; }
+}
 
 /* ---------- guided first run ---------- */
 const GUIDE = [
