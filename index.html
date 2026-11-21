@@ -182,6 +182,7 @@ details.presets summary::-webkit-details-marker { display: none; }
 .wall-sel { stroke: var(--sel); pointer-events: none; stroke-linecap: round; }
 .tv-screen { stroke: var(--sel); stroke-linecap: round; }
 .tv-lbl { font-weight: 500; }
+.small-lbl { font-weight: 500; fill: var(--ink-2); paint-order: stroke; stroke: var(--floor); stroke-width: 3px; }
 .view-line { stroke: var(--sel); fill: none; pointer-events: none; }
 .view-line.bad { stroke: var(--warn); }
 .view-dot { fill: var(--sel); pointer-events: none; }
@@ -808,9 +809,11 @@ function planMarkup(k) {
     const p = posOf(it.id), on = sel && sel.type === "item" && sel.id === it.id;
     const cls = ["item", it.floor ? "floorish" : "", it.on ? "up" : "", it.tv ? "tv" : "", probs[it.id] ? "bad" : "", on ? "on" : ""].join(" ");
     const long = it.d > it.w * 1.25, tr = textRot(p.r, long), Ls = (long ? it.d : it.w) / k, Ss = (long ? it.w : it.d) / k;
-    const nfs = Math.min(12, Math.max(9, Ss / 4)) * k;
+    let nfs = Math.min(12, Math.max(9, Ss / 4)) * k;
     let txt = "";
-    const fitsName = it.name.length * nfs * 0.58 <= (long ? it.d : it.w) * 1.02;
+    const span = (long ? it.d : it.w) * 1.02;
+    let fitsName = it.name.length * nfs * 0.58 <= span;
+    if (!fitsName && Math.max(it.w, it.d) >= 70 && span / (it.name.length * 0.58) >= 7.5 * k) { nfs = span / (it.name.length * 0.58); fitsName = true; }   // long name: a smaller font
     if (Ls > 34 && Ss > 14 && fitsName && !it.tv && !childrenOf(it.id).length) {
       const showDim = Ss > 30 && (fmt(it.w).length + fmt(it.d).length + 3) * nfs * 0.85 * 0.62 <= (long ? it.d : it.w);
       txt += `<text class="iname" font-size="${f(nfs)}" y="${showDim ? f(-nfs * 0.55) : 0}">${esc(it.name)}</text>`;
@@ -820,6 +823,10 @@ function planMarkup(k) {
       `<rect class="body" data-hit="item" data-id="${it.id}" x="${f(-it.w / 2)}" y="${f(-it.d / 2)}" width="${f(it.w)}" height="${f(it.d)}" rx="${Math.min(3, it.w / 6, it.d / 6)}" stroke-width="${(on ? 2.2 : it.on ? 1.6 : 1.2) * k}" style="fill:${it.tv ? "var(--wall)" : `var(--f${it.color % 6})`};fill-opacity:${it.floor ? 0.55 : it.tv ? 1 : 0.95}"/>` +
       (it.tv ? `<line class="tv-screen" stroke-width="${2.5 * k}" x1="${f(-it.w / 2 + 2)}" y1="${f(it.d / 2)}" x2="${f(it.w / 2 - 2)}" y2="${f(it.d / 2)}" pointer-events="none"/>` : "") +
       `<g transform="rotate(${tr})">${txt}</g></g>`;
+    if (!txt && !it.tv && !it.on && !it.floor) {   // too small for its name inside: label it just below
+      const ys = rectCorners(p, it.w, it.d, p.r).map(c => c.y), fsz = 10 * k;
+      h += `<text class="iname small-lbl" font-size="${f(fsz)}" x="${f(p.x)}" y="${f(Math.max(...ys) + fsz * 0.9)}">${esc(it.name)}</text>`;
+    }
     if (it.tv && it.w / k > 30) {   // TV label just in front of the screen, kept upright
       const fr = tvFront(it), lp = V.add(fr.p, V.mul(fr.dir, 9 * k)), ur = textRot(p.r, false) + p.r;
       const short = (it.tv.size ? it.tv.size + "″ " : "") + it.name, b = baseOf(it), long = b ? `${short} on ${b.name}` : short;
