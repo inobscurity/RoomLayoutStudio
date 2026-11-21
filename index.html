@@ -1527,7 +1527,7 @@ function arrangeCost(C, detail) {
     for (const p of P) if (!pointInPoly(p, S.room.pts)) out += distToPoly(p, S.room.pts);
     if (out > 0) add(300 + out * 5, `${it.name} is outside the room`);
     for (const Z of C.zones) { const ov = overlapArea(P, Z); if (ov > 50) add(300 + ov / 10, `${it.name} blocks a doorway`); }
-    if (windowBlock(it)) add(40, `${it.name} covers part of a window`);
+    if (windowBlock(it)) add(it.tv ? 260 : 40, it.tv ? `${it.name} is in front of a window` : `${it.name} covers part of a window`);
   }
   // 2. pieces that belong against a wall have their back to one
   for (const it of C.items) {
@@ -1882,7 +1882,24 @@ async function arrangeForMe() {
     const starts = designedStarts(C, base.pos), quick = [];
     for (const st of starts) { TEMP_LAYOUT = { id: "arrange-tmp", pos: st }; const keep = S.current; S.current = "arrange-tmp"; try { quick.push({ st, c: arrangeCost(C) }); } finally { S.current = keep; TEMP_LAYOUT = null; } }
     quick.sort((a, b) => a.c - b.c);
-    const jobs = quick.slice(0, 12).map(q => ({ st: q.st, refine: true, iters: 3500 }));
+    // put each free piece of storage (and each lamp) at its best spot along the walls, one at a time
+    const along = C.movable.filter(i => WALL_SHAPES.has(shapeOf(i)) && !childrenOf(i.id).some(c => c.tv) || ["floorlamp", "treelamp", "plant"].includes(shapeOf(i)));
+    const placeAlong = async st => {
+      const L = { id: "arrange-tmp", pos: st }; TEMP_LAYOUT = L; const keep = S.current; S.current = L.id;
+      try {
+        for (const it of along) {
+          let best = { c: arrangeCost(C), p: { ...st[it.id] } };
+          for (const [a, z] of C.walls) { const e = V.norm(V.sub(z, a)), n = { x: -e.y, y: e.x }, len = V.dist(a, z);
+            for (let t = it.w / 2 + 2; t <= len - it.w / 2 - 2; t += 30) { const c = V.add(V.add(a, V.mul(e, t)), V.mul(n, it.d / 2 + 1));
+              st[it.id] = { x: Math.round(c.x), y: Math.round(c.y), r: normDeg(Math.atan2(n.y, n.x) / DEG - 90) }; const cc = arrangeCost(C); if (cc < best.c) best = { c: cc, p: { ...st[it.id] } }; } }
+          st[it.id] = best.p;
+        }
+      } finally { S.current = keep; TEMP_LAYOUT = null; }
+      await tick(); return st;
+    };
+    const top = quick.slice(0, 6);
+    if (along.length) for (const q of top) await placeAlong(q.st);
+    const jobs = top.map(q => ({ st: q.st, refine: true, iters: 3500 }));
     jobs.push({ st: JSON.parse(JSON.stringify(base.pos)), refine: true, iters: 4000 });   // and the current arrangement, tidied
     const results = [];
     for (const [r, job] of jobs.entries())
@@ -1898,7 +1915,7 @@ async function arrangeForMe() {
       try { const d = arrangeCost(C, true); return { res, d, own: d.why.filter(w => w[1] && moving.some(n => w[1].includes(n))).reduce((t, w) => t + w[0], 0) }; } finally { S.current = keep; TEMP_LAYOUT = null; } });
     const allNames = S.items.map(i => i.name);
     const hard = j => j.d.why.filter(w => w[0] >= 250 && (moving.some(n => w[1].includes(n)) || !allNames.some(n => w[1].includes(n)))).length;   // must-keep rules broken by moving pieces, or walkways
-    const good = judged.filter((j, i) => i === 0 || (j.own <= judged[0].own * 1.5 + 80 && hard(j) <= hard(judged[0])));
+    const good = judged.filter((j, i) => i === 0 || (j.own <= judged[0].own * 1.5 + 80 && hard(j) === 0));
     const made = good.map((j, i) => { const L = { id: uid(), name: `Suggestion ${i + 1}`, pos: j.res.pos, suggested: true }; S.layouts.push(L); return L; });
     ARR.report = made.map((L, i) => ({ id: L.id, ...good[i].d }));
     ARR.found = made.length;
