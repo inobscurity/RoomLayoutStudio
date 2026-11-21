@@ -125,26 +125,8 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   The rule of thumb is 1 to 1.6 times the screen diagonal for an immersive picture, and up to 2.5 times for
   comfortable viewing. Seats more than 30° to the side are flagged. Sofas, chairs and beds count as seats
   automatically, and any piece can be marked as one.
-- **Arrange for me** (experimental, Layouts tab): tries thousands of arrangements and adds three suggested
-  layouts. It follows common interior-design rules: major pieces (sofa, recliners, storage, the TV unit)
-  against walls, recliners kept together, the coffee table 35–45 cm in front of the sofa, smaller pieces
-  placed around the seating, gaps between furniture either touching or at least 45 cm to walk through,
-  60 cm minimum and ideally 90 cm main walkways, doorways and windows kept clear, and seats facing the TV
-  at a good distance. Suggestions that fall well short of the best are left out, so in a full room you may
-  get just one. By default only
-  the seating group moves (seats, tables, footstools, lamps, and the TV with its cabinet). Change that with
-  **Keep in place** on any piece. Each suggestion lists what's still not ideal. In a crowded room some
-  suggestions will be odd, so run it again or keep more pieces in place.
 - **Room type:** in the Room tab, choose Living room, Dining room or Bedroom, or let the app work it out
-  from the furniture. Arrange for me then follows that room's design guidelines:
-  - **Dining room:** the table in the middle, or with an end or side against a wall. Chairs go evenly
-    around it, facing in and tucked in 10 cm. It keeps 90 cm (at least 75 cm) between the table and walls
-    or furniture, and about 105 cm in front of a sideboard, with storage along the walls.
-  - **Bedroom:** the bed's head against a wall, ideally not under the window or on the door's wall. It
-    keeps 60 cm beside the bed (both sides for a double or larger) and at its foot, a bedside table each
-    side of the head, and 90 cm clear in front of wardrobes. The desk goes against a wall with its chair
-    at it, and other furniture along the walls.
-  - **All rooms:** 90 cm kept clear inside doorways.
+  from the furniture. That decides how pieces such as dining chairs, beds and bedside tables are drawn in the 3D view.
 - **Layouts:** keep several arrangements of the same room and furniture, and switch between them.
 - **Room tab:** type the room size, drag the corners of an irregular room, and add doors (with their
   swing) and windows.

@@ -1134,8 +1134,7 @@ function panelFurniture() {
       <div class="sec" style="gap:6px"><h3>This piece is</h3>
         <label class="toggle"><input type="checkbox" id="f-tv" data-f="tv" ${it.tv ? "checked" : ""}> A TV or screen</label>
         <label class="toggle"><input type="checkbox" id="f-seat" data-f="seat" ${isSeat(it) ? "checked" : ""} ${it.tv || it.floor ? "disabled" : ""}> Somewhere people sit (for TV viewing distance)</label>
-        <label class="toggle"><input type="checkbox" id="f-lock" data-f="locked" ${isLocked(it) ? "checked" : ""}> Keep in place when using Arrange for me</label>
-      <label class="toggle"><input type="checkbox" id="f-floor" data-f="floor" ${it.floor ? "checked" : ""}> A rug (lies on the floor; other furniture can stand on it)</label>
+        <label class="toggle"><input type="checkbox" id="f-floor" data-f="floor" ${it.floor ? "checked" : ""}> A rug (lies on the floor; other furniture can stand on it)</label>
       </div>
       <div class="row">
         <button class="btn sm" data-act="rot90">Rotate 90°</button>
@@ -1255,25 +1254,9 @@ function panelRoom() {
   <div class="sec"><label class="toggle"><input type="checkbox" id="r-snap" data-act="snap" ${S.snap ? "checked" : ""}> Snap furniture to walls</label></div>`;
   return h;
 }
-function arrangeSection() {
-  const L = layout(), rep = ARR.report && ARR.report.find(r => r.id === L.id);
-  const locked = S.items.filter(i => !i.floor && !i.on && isLocked(i)).map(i => i.name);
-  let h = `<div class="sec"><h3>Arrange for me <span class="pill" style="background:var(--line);color:var(--ink)">Experimental</span></h3><div class="card">
-    <p class="tip" style="margin:0">Tries thousands of arrangements and makes three suggestions, scored on: everything fitting with nothing in front of doorways or the window, seats facing the TV at a good distance, pieces like cabinets against walls, tables in front of the seats, and 60 cm walkways. Your other layouts stay as they are. Treat the suggestions as ideas to start from: in a full room some will be odd, so press it again for new ones, and keep more pieces in place to focus it.</p>
-    ${locked.length ? `<p class="tip" style="margin:0">Staying put: ${esc(locked.join(", "))}. Change this with <b>Keep in place</b> in a piece's settings.</p>` : ""}
-    <button class="btn tape" data-act="arrange" ${ARR.busy ? "disabled" : ""}>${ARR.busy ? "Working…" : "Arrange for me"}</button>
-    <div class="arr-progress" id="arr-progress" ${ARR.busy ? "" : "hidden"}><i></i></div>`;
-  if (rep) {
-    const moving = S.items.filter(i => !i.floor && !i.on && !isLocked(i)).map(i => i.name).sort((x, y) => y.length - x.length);
-    const issues = rep.why.filter(w => w[1] && moving.some(n => w[1].includes(n)));   // leave out problems only fixed pieces have
-    h += issues.length ? `<div class="sec" style="gap:4px"><h3>Still not ideal in ${esc(L.name)}</h3>${issues.slice(0, 5).map(w => `<div class="warnline">● ${esc(w[1])}</div>`).join("")}</div>`
-      : `<p class="tip" style="margin:0"><b>${esc(L.name)}</b> meets every rule.</p>`;
-  }
-  return h + `</div></div>`;
-}
 function panelLayouts() {
   const L = layout();
-  let h = arrangeSection() + `<div class="sec"><h3>Layouts</h3><div class="list">${S.layouts.map(l => `<button class="li" data-act="pick-layout" data-id="${l.id}" aria-current="${l.id === L.id}"><span class="t"><b>${esc(l.name)}</b><span>${l.id === L.id ? "On the plan" : "Tap to show"}</span></span></button>`).join("")}</div></div>
+  let h = `<div class="sec"><h3>Layouts</h3><div class="list">${S.layouts.map(l => `<button class="li" data-act="pick-layout" data-id="${l.id}" aria-current="${l.id === L.id}"><span class="t"><b>${esc(l.name)}</b><span>${l.id === L.id ? "On the plan" : "Tap to show"}</span></span></button>`).join("")}</div></div>
   <div class="sec"><h3>This layout</h3><div class="card">
     <label class="f">Name<input class="in" id="l-name" data-l="name" value="${esc(L.name)}"></label>
     <div class="row"><button class="btn sm" data-act="dup-layout">Copy as a new idea</button><button class="btn sm" data-act="save-image">Save as image</button><button class="btn sm" data-act="open-3d">See it in 3D</button>
@@ -1368,7 +1351,6 @@ pbody.addEventListener("click", e => {
     case "del-op": commit(); S.openings = S.openings.filter(o => o !== op); sel = null; renderAll(); save(); break;
     case "snap": S.snap = b.checked; save(); break;
     case "pick-layout": S.current = b.dataset.id; confirmKey = null; renderAll(); save(); break;
-    case "arrange": arrangeForMe(); renderPanel(); break;
     case "dup-layout": { commit(); const L = layout(), n = { id: uid(), name: L.name + " (idea)", pos: JSON.parse(JSON.stringify(L.pos)) }; S.layouts.push(n); S.current = n.id; renderAll(); save(); setTimeout(() => $("#l-name")?.select(), 0); break; }
     case "ask-del-layout": confirmKey = "layout"; renderPanel(); break;
     case "del-layout": commit(); S.layouts = S.layouts.filter(l => l.id !== S.current); S.current = S.layouts[0].id; confirmKey = null; renderAll(); save(); break;
@@ -1455,7 +1437,8 @@ document.querySelector(".stage").addEventListener("click", e => {
 });
 
 /* ================================================================
-   Arrange for me: tries thousands of arrangements (simulated annealing)
+   Automatic arranging (not shown in the app at the moment; kept for layout templates later).
+   Tries thousands of arrangements (simulated annealing)
    and keeps the best few. Lower cost is better; each rule adds to it.
    ================================================================ */
 var TEMP_LAYOUT = null;   // var: layout() may run before this line
