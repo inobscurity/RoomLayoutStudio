@@ -1818,7 +1818,8 @@ async function arrangeForMe() {
     const moving = C.movable.map(i => i.name).sort((x, y) => y.length - x.length);
     const judged = picks.map(res => { TEMP_LAYOUT = { id: "arrange-tmp", pos: res.pos }; const keep = S.current; S.current = "arrange-tmp";
       try { const d = arrangeCost(C, true); return { res, d, own: d.why.filter(w => w[1] && moving.some(n => w[1].includes(n))).reduce((t, w) => t + w[0], 0) }; } finally { S.current = keep; TEMP_LAYOUT = null; } });
-    const good = judged.filter((j, i) => i === 0 || j.own <= judged[0].own * 1.5 + 80);
+    const hard = j => j.d.why.filter(w => w[0] >= 250 && moving.some(n => w[1].includes(n))).length;   // must-keep rules broken by moving pieces
+    const good = judged.filter((j, i) => i === 0 || (j.own <= judged[0].own * 1.5 + 80 && hard(j) <= hard(judged[0])));
     const made = good.map((j, i) => { const L = { id: uid(), name: `Suggestion ${i + 1}`, pos: j.res.pos, suggested: true }; S.layouts.push(L); return L; });
     ARR.report = made.map((L, i) => ({ id: L.id, ...good[i].d }));
     ARR.found = made.length;
