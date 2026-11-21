@@ -126,8 +126,12 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   comfortable viewing. Seats more than 30° to the side are flagged. Sofas, chairs and beds count as seats
   automatically, and any piece can be marked as one.
 - **Arrange for me** (experimental, Layouts tab): tries thousands of arrangements and adds three suggested
-  layouts. They're scored on everything fitting, doorways and windows kept clear, seats facing the TV at a
-  good distance, storage against walls, tables in front of the seats, and 60 cm walkways. By default only
+  layouts. It follows common interior-design rules: major pieces (sofa, recliners, storage, the TV unit)
+  against walls, recliners kept together, the coffee table 35–45 cm in front of the sofa, smaller pieces
+  placed around the seating, gaps between furniture either touching or at least 45 cm to walk through,
+  60 cm minimum and ideally 90 cm main walkways, doorways and windows kept clear, and seats facing the TV
+  at a good distance. Suggestions that fall well short of the best are left out, so in a full room you may
+  get just one. By default only
   the seating group moves (seats, tables, footstools, lamps, and the TV with its cabinet). Change that with
   **Keep in place** on any piece. Each suggestion lists what's still not ideal. In a crowded room some
   suggestions will be odd, so run it again or keep more pieces in place.
