@@ -522,7 +522,15 @@ function validateSel() {
   else if (sel.type === "op" && !S.openings.find(o => o.id === sel.id)) sel = null;
   else if (sel.type === "wall" && !(sel.i < S.room.pts.length)) sel = null;
 }
-const layout = () => S.layouts.find(l => l.id === S.current) || S.layouts[0];
+const layout = () => (S.current === "photo" && S.photoLayout) || S.layouts.find(l => l.id === S.current) || S.layouts[0];
+/* Where everything stood when the photos were taken. Kept apart from the layouts, so moving furniture in
+   any layout never changes which part of a photo shows each piece. Pieces missing from it are copied in
+   from the first layout. */
+function photoLayout() {
+  if (!S.photoLayout) S.photoLayout = { id: "photo", name: "As photographed", pos: JSON.parse(JSON.stringify(S.layouts[0].pos)) };
+  for (const it of S.items) if (!S.photoLayout.pos[it.id] && S.layouts[0].pos[it.id]) S.photoLayout.pos[it.id] = { ...S.layouts[0].pos[it.id] };
+  return S.photoLayout;
+}
 const itemById = id => S.items.find(i => i.id === id);
 /* Positions are stored per layout. A piece standing on another piece stores its position
    relative to that piece (in the base's own frame), so it moves and turns with it. */
@@ -1252,6 +1260,7 @@ function addItem(name, w, d, h, floor, pos, thumb, extra) {
   S.items.push(it);
   const c = pos || { ...roomCenter(), r: 0 };
   S.layouts.forEach(l => (l.pos[it.id] = { x: c.x, y: c.y, r: c.r || 0 }));
+  if (S.photoLayout && pos) S.photoLayout.pos[it.id] = { x: c.x, y: c.y, r: c.r || 0 };   // measured from a photo: that's where it stands
   sel = { type: "item", id: it.id }; tab = "furniture";
   renderAll(); save();
   return it;
@@ -1508,7 +1517,7 @@ $("#importFile").addEventListener("change", async e => {
   try {
     const d = JSON.parse(await f.text());
     if (!d || !d.room || !Array.isArray(d.room.pts) || !Array.isArray(d.items) || !Array.isArray(d.layouts) || !d.layouts.length) throw new Error("shape");
-    S = Object.assign(blankProject(), d, { isExample: false, bannerHidden: true }); if (!S.layouts.find(l => l.id === S.current)) S.current = S.layouts[0].id;
+    S = Object.assign(blankProject(), d, { isExample: false, bannerHidden: true }); photoLayout(); if (!S.layouts.find(l => l.id === S.current)) S.current = S.layouts[0].id;
     undoStack = []; redoStack = [];   // an import replaces the whole project, photos included: nothing to undo back into
     sel = null; renderAll(); fit(); save(); toast("Project imported");
   } catch (err) { toast(f.size < 200 ? "That file is empty. Download the project file again, then import it." : "That file isn't a Room Layout Studio project. Choose the .json project file."); }
@@ -2664,7 +2673,7 @@ function faceList(it, p) {
 }
 /* everything above, painted from the photos; takes a few seconds, done once until something changes */
 function looksSignature() {
-  const L0 = S.layouts[0];
+  const L0 = photoLayout();
   return JSON.stringify([S.room, S.photos.filter(p => p.roomT).map(p => [p.id, p.roomT, p.vlines && p.vlines.length]), S.items.map(i => [i.id, i.w, i.d, i.h, i.on, i.floor]), L0 && L0.pos]);
 }
 async function buildLooks() {
@@ -2680,7 +2689,7 @@ async function buildLooks() {
     P.push({ cam: s.cam, T: s.T, sc, W: c.width, H: c.height, data: g.getImageData(0, 0, c.width, c.height).data, eye: camInRoom(s.cam, s.T).pos });
   }
   if (!P.length) return null;
-  const L0 = S.layouts[0], blocks = blocksIn(L0), roomBlocks = blocksIn(L0, 10), wallBlocks = blocksIn(L0, 2), looks = { walls: {}, items: {}, floor: null, ceiling: null };
+  const L0 = photoLayout(), blocks = blocksIn(L0), roomBlocks = blocksIn(L0, 10), wallBlocks = blocksIn(L0, 2), looks = { walls: {}, items: {}, floor: null, ceiling: null };
   // the reference paper on the floor, in room coordinates, so it can be left out of the floor
   const papers = photos.filter(p => p.ref && p.roomT).map(p => [[-3, -3], [p.ref.W + 3, -3], [p.ref.W + 3, p.ref.H + 3], [-3, p.ref.H + 3]].map(([x, y]) => planeToRoom({ x, y }, p.roomT)));
   const underPaper = pt => papers.some(poly => pointInPoly({ x: pt[0], y: pt[1] }, poly));
