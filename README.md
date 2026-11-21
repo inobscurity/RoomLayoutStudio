@@ -40,8 +40,9 @@ homography). Any two points you tap on the same surface can then be measured in 
   photo or type it in.
 - **Floor corners hidden by furniture?** Switch to **Ceiling corners**, both when tracing the room and when
   linking a photo, and tap where the walls meet the ceiling. A ceiling corner is straight above its floor
-  corner, so the app uses the ceiling height from the Room tab to place it. Measure that height with a
-  tape. The Preview draws the whole room as a wireframe (floor, corners and ceiling), so you can check it
+  corner, so the app uses the ceiling height from the Room tab to place it. Ceiling corners are less accurate
+  than floor corners. The ceiling is close above the camera, so small errors grow, and in a real test a 4.96 m
+  wall came out at 4.53 m. Use floor corners where you can, and correct the plan with one tape measurement. The Preview draws the whole room as a wireframe (floor, corners and ceiling), so you can check it
   lines up with the photo.
 - **Things whose base is hidden,** like a bookcase or floor lamp behind a sofa. In the Furniture tool,
   choose **Top corners**, type the piece's height, and tap its top corners instead of its feet. Or choose

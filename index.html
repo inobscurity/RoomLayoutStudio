@@ -2139,7 +2139,7 @@ function cornerSwitch(what) {
   const ceil = W.cornerMode === "ceiling";
   return `<div class="row"><div class="seg">${[["floor", "Floor corners"], ["ceiling", "Ceiling corners"]].map(([k, l]) => `<button data-w="cmode" data-m="${k}" aria-pressed="${W.cornerMode === k}">${l}</button>`).join("")}</div>
     ${ceil ? `<label class="f" style="flex-direction:row;align-items:center;gap:6px"><span class="muted">Ceiling height</span><input class="in num" id="w-ceil" value="${esc(fmtIn(S.room.height || 250))}" style="width:90px"></label>` : ""}</div>
-    ${ceil ? `<p class="muted small" style="margin:0">Tap ${what} where two walls meet the ceiling. A ceiling corner is straight above its floor corner, so the app uses the ceiling height to find it. Measure the height with a tape: 5 cm out moves a corner a few centimetres.</p>` : ""}`;
+    ${ceil ? `<p class="muted small" style="margin:0">Tap ${what} where two walls meet the ceiling. A ceiling corner is straight above its floor corner, so the app uses the ceiling height to find it. It's less accurate than floor corners: the ceiling is close above the camera, so small errors grow and walls can come out 5–10% off. Use floor corners where you can, and type one wall's length from a tape in the Room tab to correct the plan.</p>` : ""}`;
 }
 function formFields(floor) {
   const f = W.form;
