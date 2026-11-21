@@ -192,6 +192,15 @@ details.presets summary::-webkit-details-marker { display: none; }
 .view-txt { fill: var(--paper); font-family: var(--font-mono); font-weight: 500; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 
 /* Photo measuring */
+#v3d { position: fixed; inset: 0; z-index: 30; background: #0d1112; color: #e8eeec; display: grid; grid-template-rows: auto 1fr auto; }
+.v3top { flex-wrap: wrap; }
+.v3top h2 { flex: 0 1 auto !important; margin-right: auto !important; }
+.v3top .in { width: auto; background: #0d1112; border-color: #2f3a3c; color: #e8eeec; min-height: 32px; padding: 4px 8px; }
+.v3top .toggle { color: #c4d0ce; }
+.v3stage { position: relative; min-height: 0; display: grid; place-items: center; overflow: hidden; }
+.v3stage canvas { display: block; touch-action: none; }
+.v3msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #c4d0ce; font-weight: 500; text-align: center; max-width: 80%; pointer-events: none; }
+.v3hint { margin: 0; padding: 8px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); color: #9fb0ae; font-size: 12.5px; background: #161c1e; }
 #wiz { position: fixed; inset: 0; z-index: 30; background: #0d1112; color: #e8eeec; display: grid; grid-template-rows: auto 1fr auto; }
 .wtop { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px)); background: #161c1e; }
 .wtop h2 { margin: 0; font: 700 16px var(--font-display); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -271,6 +280,7 @@ details.presets summary::-webkit-details-marker { display: none; }
       <div class="hud">
         <button class="btn sm" id="b-fit">Fit room</button>
         <button class="btn sm" id="b-img">Save image</button>
+        <button class="btn sm" id="b-3d">3D view</button>
         <button class="btn sm" id="b-rot" hidden>Rotate 90°</button>
       </div>
       <div class="scale" id="scale"></div>
@@ -302,6 +312,19 @@ details.presets summary::-webkit-details-marker { display: none; }
   <div class="wbar" id="wbar"></div>
 </div>
 <input type="file" id="importFile" accept="application/json,.json" hidden>
+<div id="v3d" hidden>
+  <div class="wtop v3top">
+    <button class="btn sm" data-v3="close" style="background:#20292c;border-color:#2f3a3c;color:#e8eeec">Done</button>
+    <h2>3D view</h2>
+    <select class="in" id="v3view" aria-label="Viewpoint"></select>
+    <select class="in" id="v3layout" aria-label="Layout"></select>
+    <label class="toggle"><input type="checkbox" id="v3tex"> Real surfaces from photos</label>
+    <label class="toggle"><input type="checkbox" id="v3furn"> Furniture</label>
+    <button class="btn sm tape" data-v3="save">Save image</button>
+  </div>
+  <div class="v3stage" id="v3stage"><div class="v3msg" id="v3msg"></div></div>
+  <p class="v3hint">Drag to turn the room, scroll or pinch to zoom. Furniture is shown as blocks wearing pictures cut from your photos; sides no photo shows get a plain colour.</p>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -1183,12 +1206,12 @@ function panelLayouts() {
   let h = `<div class="sec"><h3>Layouts</h3><div class="list">${S.layouts.map(l => `<button class="li" data-act="pick-layout" data-id="${l.id}" aria-current="${l.id === L.id}"><span class="t"><b>${esc(l.name)}</b><span>${l.id === L.id ? "On the plan" : "Tap to show"}</span></span></button>`).join("")}</div></div>
   <div class="sec"><h3>This layout</h3><div class="card">
     <label class="f">Name<input class="in" id="l-name" data-l="name" value="${esc(L.name)}"></label>
-    <div class="row"><button class="btn sm" data-act="dup-layout">Copy as a new idea</button><button class="btn sm" data-act="save-image">Save as image</button>
+    <div class="row"><button class="btn sm" data-act="dup-layout">Copy as a new idea</button><button class="btn sm" data-act="save-image">Save as image</button><button class="btn sm" data-act="open-3d">See it in 3D</button>
     ${S.layouts.length > 1 ? `<button class="btn sm danger" data-act="ask-del-layout">Delete</button>` : ""}</div>
     ${confirmKey === "layout" ? `<div class="confirm"><span>Delete “${esc(L.name)}”? The furniture stays in your other layouts.</span><div class="row"><button class="btn sm danger" data-act="del-layout">Delete layout</button><button class="btn sm" data-act="cancel">Keep it</button></div></div>` : ""}
   </div>
   <p class="tip">Every layout uses the same room and furniture. Only positions and angles differ, so you can flip between ideas.</p></div>`;
-  const linked = S.photos.filter(q => q.kind === "floor" && q.roomT);
+  const linked = S.photos.filter(q => q.kind === "floor" && q.roomT).sort((a, b) => a.created - b.created);
   h += `<div class="sec"><h3>See it in your photos</h3>${linked.length
     ? `<div class="chips">${linked.map((q, i) => `<button class="li" data-act="preview-photo" data-id="${q.id}" style="width:auto;border:1px solid var(--line);border-radius:var(--r)"><span class="thumb" style="background-image:url(${q.thumb || q.src})"></span><span class="t"><b>View ${i + 1}</b></span></button>`).join("")}</div>`
     : ""}<p class="tip">${linked.length ? "Opens the photo with this layout drawn in, from where the photo was taken." : "Room photos you measure or link to the plan show up here. Take photos from different corners to see a layout from each angle."}</p></div>`;
@@ -1282,6 +1305,7 @@ pbody.addEventListener("click", e => {
     case "del-photo": S.photos = S.photos.filter(p => p.id !== b.dataset.id); renderPanel(); save(); break;
     case "export": exportProject(); break;
     case "save-image": savePlanImage(); break;
+    case "open-3d": open3D(); break;
     case "import": $("#importFile").click(); break;
     case "ask-new": confirmKey = "new"; renderPanel(); break;
     case "new": commit(); S = blankProject(S.units); undoStack = []; redoStack = []; sel = null; confirmKey = null; renderAll(); fit(); save(); toast("New project started"); break;
@@ -1339,7 +1363,7 @@ document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () =>
 $("#b-sheet").addEventListener("click", () => { $("#panel").classList.toggle("collapsed"); setTimeout(() => renderPlan(), 0); });
 function expandSheet() { if ($("#panel").classList.contains("collapsed")) { $("#panel").classList.remove("collapsed"); setTimeout(renderPlan, 0); } }
 $("#b-undo").onclick = undo; $("#b-redo").onclick = redo;
-$("#b-fit").onclick = fit; $("#b-img").onclick = savePlanImage; $("#b-rot").onclick = rotate90;
+$("#b-fit").onclick = fit; $("#b-img").onclick = savePlanImage; $("#b-3d").onclick = () => open3D(); $("#b-rot").onclick = rotate90;
 $("#b-photo").onclick = () => openWizard(null);
 document.querySelector(".stage").addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
@@ -1482,7 +1506,8 @@ function toast(msg) { const t = $("#toast"); t.style.top = wiz.hidden ? "" : "ca
 /* ================================================================
    Photo measuring
    ================================================================ */
-const wiz = $("#wiz"), cv = $("#wcv"), ctx = cv.getContext("2d"), loupe = $("#loupe"), lctx = loupe.getContext("2d");
+const wiz = $("#wiz"), cv = $("#wcv"), loupe = $("#loupe"), lctx = loupe.getContext("2d");
+let ctx = cv.getContext("2d");
 const LIMIT = { vtap: 2, ref: 4, room: 12, item: 3, dist: 2, width: 2, height: 2, depth: 2, link: 2, view: 0, hgt: 2 };
 const limitOf = key => key === "item" && W.itemMode === "centre" ? 1 : LIMIT[key];
 let W = null; // wizard state
@@ -2080,6 +2105,7 @@ function wrenderBar() {
       h += `<p class="winstr">Your layout drawn into this photo from where it was taken. Pieces with a height are boxes; the rest are outlines on the floor.</p>
       <div class="row"><select class="in" id="w-layout" style="width:auto;flex:1 1 200px">${S.layouts.map(l => `<option value="${l.id}" ${l.id === S.current ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select>
       <label class="toggle"><input type="checkbox" id="w-fade" ${W.fade ? "checked" : ""}> Fade the photo</label></div>
+      <div class="row"><button class="btn sm" data-w="save-view">Save this view</button><button class="btn sm" data-w="open-3d">See it in 3D</button></div>
       <p class="muted small" style="margin:0">This is worked out from one photo, so boxes can lean or drift a little, most near the edges of the picture. Move furniture on the plan, then come back to look again.</p>`;
     } else if (W.tool === "link") {
       const res = linkResult(), pts = S.room.pts, b = roomBox(), pad = 40, vw = b.x1 - b.x0 + 2 * pad, vh = b.y1 - b.y0 + 2 * pad, k2 = Math.max(vw / 320, vh / 170);
@@ -2211,6 +2237,8 @@ wiz.addEventListener("click", e => {
   if (a === "cmode") { W.cornerMode = b.dataset.m; return afterPointsChange(); }
   if (a === "imode") { W.itemMode = b.dataset.m; W.sets.item = []; return afterPointsChange(); }
   if (a === "use-hgt") { const hv = heightAbove(W.sets.hgt[0], W.sets.hgt[1]); W.form.h = fmtIn(Math.round(hv)); W.edited.h = true; W.sets.hgt = []; W.tool = "item"; toast(`Height ${fmt(hv)} filled in`); return afterPointsChange(); }
+  if (a === "save-view") return savePhotoView();
+  if (a === "open-3d") { const id = W.photo.id; closeWizard(); open3D().then(() => { V3.view = "photo:" + id; v3Bar(); setV3Camera().then(() => { v3Size(); v3Render(); }); }); return; }
   if (a === "link-v") { W.linkPick = +b.dataset.v; return wrenderBar(); }
   if (a === "clear-link") { W.sets.link = []; W.linkV = []; W.linkPick = null; return afterPointsChange(); }
   if (a === "save-link") {
@@ -2228,6 +2256,16 @@ function findUprights() {
     try { W.photo.vlines = detectUprights(W.img); } catch (e) { W.photo.vlines = []; }
     W.finding = false; updateUp(); computeH(); afterPointsChange();
   }, 30);
+}
+/* the photo with the layout drawn in, at the photo's full size */
+async function savePhotoView() {
+  const c = document.createElement("canvas"); c.width = W.img.width; c.height = W.img.height;
+  const keepCtx = ctx, keepV = W.v;
+  ctx = c.getContext("2d"); W.v = { s: 1, tx: 0, ty: 0 };
+  try { ctx.drawImage(W.img, 0, 0); drawPlanOnPhoto(); } finally { ctx = keepCtx; W.v = keepV; }
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+  const slug = layout().name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "layout";
+  if (blob) saveFile(`room-layout-${slug}-photo-view.jpg`, blob, "Image saved");
 }
 function keepRef() { if (W.photo) { W.photo.ref = JSON.parse(JSON.stringify(W.ref)); save(); } }
 
@@ -2329,6 +2367,426 @@ function saveFace() {
   toast(`Added ${name}`);
   W.sets.width = []; W.sets.height = []; W.sets.depth = []; W.form = { name: "", w: "", d: "", h: "" }; W.edited = {}; W.tool = "width"; afterPointsChange();
 }
+
+/* ================================================================
+   3D view: the room from the plan, with walls, floor and ceiling
+   copied from the photos (leaving out where furniture stood), and
+   each piece as a block wearing its own pictures.
+   ================================================================ */
+const THREE_URL = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+let threeP = null;
+function loadThree() {
+  if (window.THREE) return Promise.resolve();
+  if (!threeP) threeP = new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = THREE_URL; s.onload = res;
+    s.onerror = () => { threeP = null; rej(new Error("three")); }; document.head.appendChild(s);
+  });
+  return threeP;
+}
+const V3 = { renderer: null, scene: null, camera: null, room: null, furn: null, walls: [], ceil: null,
+  view: "orbit", orbit: { th: -0.9, ph: 0.95, r: 900 }, textured: true, showFurn: true, layoutId: null, looks: null, looksSig: "", busy: false };
+const v3el = $("#v3d"), v3stage = $("#v3stage"), v3msg = $("#v3msg");
+const imgCache = new Map();
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+/* camera of a linked photo, worked out the same way as in the photo screen */
+async function photoSetup(p) {
+  let img = imgCache.get(p.id); if (!img) { img = await loadImg(p.src); imgCache.set(p.id, img); }
+  const keep = W; W = newWiz(p.kind); W.photo = p; W.img = img; W.ref = JSON.parse(JSON.stringify(p.ref));
+  try { updateUp(); computeH(); return { img, cam: W.cam, T: p.roomT }; } finally { W = keep; }
+}
+/* the photo camera in room coordinates: position, and its right / down / forward directions (z up) */
+function camInRoom(cam, T) {
+  const t = cam.t, dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const C = [-dot(cam.r1, t), -dot(cam.r2, t), -dot(cam.r3, t)], p = planeToRoom({ x: C[0], y: C[1] }, T);
+  const dir = k => { const q = V.rot({ x: cam.r1[k], y: cam.r2[k] }, -T.a); return [q.x, q.y, cam.r3[k]]; };
+  return { pos: [p.x, p.y, C[2]], right: dir(0), down: dir(1), fwd: dir(2) };
+}
+/* furniture blocks of a layout, for working out what each photo can and can't see */
+function blocksIn(L, margin = -0.5) {
+  return inLayout(L, () => S.items.filter(i => !i.floor).map(it => {
+    const p = posOf(it.id), { u, v } = axes(p.r), top = topOf(it), m = margin;
+    return { id: it.id, c: { x: p.x, y: p.y }, u, v, hw: it.w / 2 + m, hd: it.d / 2 + m, z0: Math.max(0, top - (it.h || 0) - Math.max(0, m)), z1: Math.max(top, top - (it.h || 0) + 1) + Math.max(0, m) };
+  }));
+}
+function blocked(A, B, blocks, skip) {
+  for (const b of blocks) {
+    if (b.id === skip) continue;
+    const loc = p => { const dx = p[0] - b.c.x, dy = p[1] - b.c.y; return [dx * b.u.x + dy * b.u.y, dx * b.v.x + dy * b.v.y, p[2]]; };
+    const a = loc(A), c = loc(B), lo = [-b.hw, -b.hd, b.z0], hi = [b.hw, b.hd, b.z1];
+    let t0 = 0, t1 = 0.995, hit = true;
+    for (let k = 0; k < 3; k++) {
+      const d = c[k] - a[k];
+      if (Math.abs(d) < 1e-9) { if (a[k] < lo[k] || a[k] > hi[k]) { hit = false; break; } }
+      else { let ta = (lo[k] - a[k]) / d, tb = (hi[k] - a[k]) / d; if (ta > tb) [ta, tb] = [tb, ta]; t0 = Math.max(t0, ta); t1 = Math.min(t1, tb); if (t0 > t1) { hit = false; break; } }
+    }
+    if (hit) return true;
+  }
+  return false;
+}
+/* paint one flat surface from the photos: for each texel, the best photo that sees that spot unblocked */
+function paintSurface(P, blocks, nw, nh, pointAt, normal, skip, preferFacing, fill = "flat", hide = null, robust = false) {
+  const c = document.createElement("canvas"); c.width = nw; c.height = nh;
+  const g = c.getContext("2d"), im = g.createImageData(nw, nh), D = im.data, got = new Uint8Array(nw * nh);
+  let sr = 0, sg = 0, sb = 0, n = 0;
+  for (let j = 0; j < nh; j++) for (let i = 0; i < nw; i++) {
+    const pt = pointAt((i + 0.5) / nw, (j + 0.5) / nh);
+    if (hide && hide(pt)) continue;
+    let best = null, bs = 0; const many = robust ? [] : null;
+    for (const ph of P) {
+      const e = ph.eye, dv = [e[0] - pt[0], e[1] - pt[1], e[2] - pt[2]], dist = Math.hypot(...dv);
+      const facing = normal ? (normal[0] * dv[0] + normal[1] * dv[1] + normal[2] * dv[2]) / dist : 1;
+      if (facing < 0.08) continue;
+      const sc = (preferFacing ? facing : 1) / dist; if (!robust && sc <= bs) continue;
+      const q = roomToPlane({ x: pt[0], y: pt[1] }, ph.T), v = project(ph.cam, q.x, q.y, pt[2]);
+      if (!v) continue;
+      const X = Math.floor(v.x * ph.sc), Y = Math.floor(v.y * ph.sc);
+      if (X < 0 || Y < 0 || X >= ph.W || Y >= ph.H) continue;
+      if (blocked(e, pt, blocks, skip)) continue;
+      if (robust) many.push([ph, (Y * ph.W + X) * 4]);
+      else { best = [ph, (Y * ph.W + X) * 4]; bs = sc; }
+    }
+    if (robust && many.length) {   // the middle value of every photo that sees this spot: clutter in one view and glare get outvoted
+      many.sort((A, B) => (A[0].data[A[1]] + A[0].data[A[1] + 1] + A[0].data[A[1] + 2]) - (B[0].data[B[1]] + B[0].data[B[1] + 1] + B[0].data[B[1] + 2]));
+      best = many[(many.length - 1) >> 1];
+    }
+    if (best) {
+      const [ph, o] = best, k = (j * nw + i) * 4;
+      D[k] = ph.data[o]; D[k + 1] = ph.data[o + 1]; D[k + 2] = ph.data[o + 2]; D[k + 3] = 255; got[j * nw + i] = 1;
+      sr += D[k]; sg += D[k + 1]; sb += D[k + 2]; n++;
+    }
+  }
+  const mean = n ? [sr / n, sg / n, sb / n] : null;
+  let median = null;
+  if (n) { const ch = [[], [], []]; for (let q = 0; q < nw * nh; q += Math.max(1, Math.floor(nw * nh / 3000))) if (got[q]) for (let c = 0; c < 3; c++) ch[c].push(D[q * 4 + c]); median = ch.map(a => { a.sort((x, y) => x - y); return a[a.length >> 1]; }); }
+ if (n) (fill === "boards" ? fillBoards : fillFlat)(D, got, nw, nh);
+  g.putImageData(im, 0, 0);
+  return { canvas: c, coverage: n / (nw * nh), mean, median };
+}
+/* unseen parts of a painted surface (behind furniture): plain surfaces get their most common colour */
+function fillFlat(D, got, w, h) {
+  const ch = [[], [], []];
+  for (let i = 0; i < w * h; i += Math.max(1, Math.floor(w * h / 4000))) if (got[i]) for (let c = 0; c < 3; c++) ch[c].push(D[i * 4 + c]);
+  const med = ch.map(a => { a.sort((x, y) => x - y); return a[a.length >> 1] || 200; });
+  for (let i = 0; i < w * h; i++) if (!got[i]) { D[i * 4] = med[0]; D[i * 4 + 1] = med[1]; D[i * 4 + 2] = med[2]; D[i * 4 + 3] = 255; }
+}
+/* a timber floor: fill gaps by tiling a clean patch of the real floor (mirrored, so tiles join), boards kept aligned */
+function fillBoards(D, got, w, h) {
+  const pw = Math.min(48, w >> 1), ph = Math.min(48, h >> 1); let best = null;
+  const lum = i => D[i * 4] + D[i * 4 + 1] + D[i * 4 + 2];
+  for (let y = 0; y + ph <= h; y += 6) for (let x = 0; x + pw <= w; x += 6) {
+    let ok = true, sum = 0, sq = 0, mx = 0;
+    for (let j = 0; j < ph && ok; j += 2) for (let i = 0; i < pw; i += 2) { const q = (y + j) * w + x + i; if (!got[q]) { ok = false; break; } const L = lum(q); sum += L; sq += L * L; if (L > mx) mx = L; }
+    if (!ok) continue;
+    const n = (pw >> 1) * (ph >> 1), varc = sq / n - (sum / n) ** 2;
+    if (mx > 1.7 * sum / n) continue;                       // no bright specks (paper scraps, reflections) to repeat
+    if (!best || varc < best.v) best = { x, y, v: varc };
+  }
+  if (!best) return fillBoardsMirror(D, got, w, h);
+  const src = D.slice();
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (got[i]) continue;
+    const tx = Math.floor(x / pw), ty = Math.floor(y / ph);
+    let u = x % pw, v = y % ph; if (tx % 2) u = pw - 1 - u; if (ty % 2) v = ph - 1 - v;
+    const q = ((best.y + v) * w + best.x + u) * 4;
+    D[i * 4] = src[q]; D[i * 4 + 1] = src[q + 1]; D[i * 4 + 2] = src[q + 2]; D[i * 4 + 3] = 255;
+  }
+}
+function fillBoardsMirror(D, got, w, h) {
+  let gx = 0, gy = 0;
+  const L = i => D[i * 4] + D[i * 4 + 1] + D[i * 4 + 2];
+  for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) {
+    const i = y * w + x;
+    if (got[i] && got[i + 1]) gx += Math.abs(L(i + 1) - L(i));
+    if (got[i] && got[i + w]) gy += Math.abs(L(i + w) - L(i));
+  }
+  const along = gx > gy ? "y" : "x";                       // boards change least along their length
+  const n = along === "y" ? w : h, len = along === "y" ? h : w, idx = (a, b) => along === "y" ? b * w + a : a * w + b;
+  const src = got.slice();
+  for (let a = 0; a < n; a++) {
+    for (let b = 0; b < len; b++) {
+      const i = idx(a, b); if (src[i]) continue;
+      let up = -1, dn = -1;
+      for (let k = b - 1; k >= 0; k--) if (src[idx(a, k)]) { up = k; break; }
+      for (let k = b + 1; k < len; k++) if (src[idx(a, k)]) { dn = k; break; }
+      let from = -1;
+      if (up >= 0 && (dn < 0 || b - up <= dn - b)) { const m = up - (b - up); from = m >= 0 && src[idx(a, m)] ? idx(a, m) : idx(a, up); }
+      else if (dn >= 0) { const m = dn + (dn - b); from = m < len && src[idx(a, m)] ? idx(a, m) : idx(a, dn); }
+      if (from >= 0) { D[i * 4] = D[from * 4]; D[i * 4 + 1] = D[from * 4 + 1]; D[i * 4 + 2] = D[from * 4 + 2]; D[i * 4 + 3] = 255; got[i] = 1; }
+    }
+  }
+  if (got.some(g => !g)) fillFlat(D, got, w, h);
+}
+/* fill unseen texels from their neighbours, growing inwards */
+function fillHoles(D, got, w, h) {
+  let left = got.reduce((a, b) => a + (b ? 0 : 1), 0), guard = 0;
+  while (left > 0 && guard++ < 600) {
+    const next = got.slice(); let changed = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (got[i]) continue;
+      let r = 0, g2 = 0, b = 0, c = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+        const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+        const j = Y * w + X; if (!got[j]) continue; r += D[j * 4]; g2 += D[j * 4 + 1]; b += D[j * 4 + 2]; c++;
+      }
+      if (c) { D[i * 4] = r / c; D[i * 4 + 1] = g2 / c; D[i * 4 + 2] = b / c; D[i * 4 + 3] = 255; next[i] = 1; changed++; }
+    }
+    got.set(next); left -= changed; if (!changed) break;
+  }
+}
+/* the surfaces of the room and of each piece, in 3D (room coordinates, z up) */
+function roomSurfaces() {
+  const H = S.room.height || 250, pts = S.room.pts, out = [];
+  pts.forEach((a, i) => {
+    if (isOpen(i)) return;
+    const w = wallInfo(i);
+    out.push({ key: "wall" + i, kind: "wall", len: w.L, H, a: w.a, e: w.e, n: [w.nIn.x, w.nIn.y, 0] });
+  });
+  return out;
+}
+function faceList(it, p) {
+  const { u, v } = axes(p.r), top = topOf(it), bot = top - (it.h || 0), zc = (top + bot) / 2, h = Math.max(1, it.h || 1);
+  const C = (du, dv, z) => [p.x + u.x * du + v.x * dv, p.y + u.y * du + v.y * dv, z];
+  // each face: centre, the face's "right" and "up" as seen from outside, outward normal, size
+  return [
+    { k: "front", c: C(0, it.d / 2, zc), right: [u.x, u.y, 0], up: [0, 0, 1], n: [v.x, v.y, 0], w: it.w, h },
+    { k: "back", c: C(0, -it.d / 2, zc), right: [-u.x, -u.y, 0], up: [0, 0, 1], n: [-v.x, -v.y, 0], w: it.w, h },
+    { k: "right", c: C(it.w / 2, 0, zc), right: [-v.x, -v.y, 0], up: [0, 0, 1], n: [u.x, u.y, 0], w: it.d, h },
+    { k: "left", c: C(-it.w / 2, 0, zc), right: [v.x, v.y, 0], up: [0, 0, 1], n: [-u.x, -u.y, 0], w: it.d, h },
+    { k: "top", c: C(0, 0, top), right: [u.x, u.y, 0], up: [-v.x, -v.y, 0], n: [0, 0, 1], w: it.w, h: it.d },
+  ];
+}
+/* everything above, painted from the photos; takes a few seconds, done once until something changes */
+function looksSignature() {
+  const L0 = S.layouts[0];
+  return JSON.stringify([S.room, S.photos.filter(p => p.roomT).map(p => [p.id, p.roomT, p.vlines && p.vlines.length]), S.items.map(i => [i.id, i.w, i.d, i.h, i.on, i.floor]), L0 && L0.pos]);
+}
+async function buildLooks() {
+  const sig = looksSignature(); if (V3.looks && V3.looksSig === sig) return V3.looks;
+  const photos = S.photos.filter(p => p.kind === "floor" && p.roomT && p.ref && p.ref.pts && p.ref.pts.length === 4);
+  if (!photos.length) return null;
+  const P = [];
+  for (const [k, p] of photos.entries()) {
+    v3msg.textContent = `Reading photo ${k + 1} of ${photos.length}…`; await tick();
+    const s = await photoSetup(p); if (!s.cam) continue;
+    const sc = Math.min(1, 1200 / s.img.width), c = document.createElement("canvas"); c.width = Math.round(s.img.width * sc); c.height = Math.round(s.img.height * sc);
+    const g = c.getContext("2d"); g.drawImage(s.img, 0, 0, c.width, c.height);
+    P.push({ cam: s.cam, T: s.T, sc, W: c.width, H: c.height, data: g.getImageData(0, 0, c.width, c.height).data, eye: camInRoom(s.cam, s.T).pos });
+  }
+  if (!P.length) return null;
+  const L0 = S.layouts[0], blocks = blocksIn(L0), roomBlocks = blocksIn(L0, 10), looks = { walls: {}, items: {}, floor: null, ceiling: null };
+  // the reference paper on the floor, in room coordinates, so it can be left out of the floor
+  const papers = photos.filter(p => p.ref && p.roomT).map(p => [[-3, -3], [p.ref.W + 3, -3], [p.ref.W + 3, p.ref.H + 3], [-3, p.ref.H + 3]].map(([x, y]) => planeToRoom({ x, y }, p.roomT)));
+  const underPaper = pt => papers.some(poly => pointInPoly({ x: pt[0], y: pt[1] }, poly));
+  const RES = 1.5, b = roomBox(), H = S.room.height || 250;
+  v3msg.textContent = "Copying the floor from your photos…"; await tick();
+  const fw = Math.round((b.x1 - b.x0) / RES), fh = Math.round((b.y1 - b.y0) / RES);
+  looks.floor = paintSurface(P, roomBlocks, fw, fh, (a, c) => [b.x0 + a * (b.x1 - b.x0), b.y0 + c * (b.y1 - b.y0), 0], [0, 0, 1], null, false, "boards", underPaper, true);
+  v3msg.textContent = "Copying the ceiling…"; await tick();
+  looks.ceiling = paintSurface(P, roomBlocks, Math.round(fw / 4), Math.round(fh / 4), (a, c) => [b.x0 + a * (b.x1 - b.x0), b.y1 - c * (b.y1 - b.y0), H], [0, 0, -1], null, false);
+  for (const s of roomSurfaces()) {
+    v3msg.textContent = "Copying the walls…"; await tick();
+    looks.walls[s.key] = paintSurface(P, roomBlocks, Math.max(2, Math.round(s.len / RES)), Math.round(s.H / RES),
+      (a, c) => [s.a.x + s.e.x * a * s.len, s.a.y + s.e.y * a * s.len, (1 - c) * s.H], s.n, null, true, "flat", null, true);
+  }
+  for (const [n, it] of S.items.entries()) {
+    if (it.floor) continue;
+    v3msg.textContent = `Copying the furniture (${n + 1} of ${S.items.length})…`; await tick();
+    const p = inLayout(L0, () => posOf(it.id)); looks.items[it.id] = {};
+    for (const f of faceList(it, p)) {
+      const nw = Math.max(2, Math.min(256, Math.round(f.w))), nh = Math.max(2, Math.min(256, Math.round(f.h)));
+      const r = paintSurface(P, blocks, nw, nh, (a, c) => [0, 1, 2].map(k => f.c[k] + f.right[k] * (a - 0.5) * f.w + f.up[k] * (0.5 - c) * f.h), f.n, it.id, true);
+      looks.items[it.id][f.k] = r.coverage > 0.25 ? r : { canvas: null, mean: r.mean };
+    }
+  }
+  V3.looks = looks; V3.looksSig = sig; v3msg.textContent = ""; return looks;
+}
+
+/* ---------- scene ---------- */
+const T3 = p => new THREE.Vector3(p[0], p[2], p[1]);   // room (x, y, z up) -> three (x, y up, z)
+function texOf(canvas) { const t = new THREE.CanvasTexture(canvas); t.minFilter = THREE.LinearFilter; return t; }
+function planeMesh(center, right, up, n, w, h, material) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+  m.matrixAutoUpdate = false; m.matrix.makeBasis(T3(right), T3(up), T3(n)).setPosition(T3(center)); return m;
+}
+const ROOM_COL = { wall: 0xe6e3dc, floor: 0x7a4a2e, ceiling: 0xf2f1ee };
+const BLOCK_COLS = [0x6f9fc7, 0xc9a873, 0x86b07c, 0xc98aa0, 0x958ac9, 0x6fb5ad];
+function rgbHex(m) { return m ? (Math.round(m[0]) << 16) | (Math.round(m[1]) << 8) | Math.round(m[2]) : null; }
+function buildRoom() {
+  const scene = V3.scene, looks = V3.textured ? V3.looks : null;
+  if (V3.room) scene.remove(V3.room);
+  const g = new THREE.Group(); V3.room = g; V3.walls = [];
+  const pts = S.room.pts, b = roomBox(), H = S.room.height || 250;
+  // floor polygon
+  const tri = THREE.ShapeUtils.triangulateShape(pts.map(p => new THREE.Vector2(p.x, p.y)), []);
+  const pos = [], uv = [], idx = [];
+  pts.forEach(p => { pos.push(p.x, 0, p.y); uv.push((p.x - b.x0) / (b.x1 - b.x0), (p.y - b.y0) / (b.y1 - b.y0)); });
+  tri.forEach(t => idx.push(...t));
+  const fg = new THREE.BufferGeometry(); fg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); fg.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); fg.setIndex(idx);
+  let fm;
+  if (looks && looks.floor && looks.floor.coverage > 0.05) { const t = texOf(looks.floor.canvas); t.flipY = false; fm = new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }); }
+  else fm = new THREE.MeshLambertMaterial({ color: rgbHex(looks && looks.floor && looks.floor.mean) ?? ROOM_COL.floor, side: THREE.DoubleSide });
+  g.add(new THREE.Mesh(fg, fm));
+  // walls
+  for (const s of roomSurfaces()) {
+    const L = looks && looks.walls[s.key], mid = [s.a.x + s.e.x * s.len / 2, s.a.y + s.e.y * s.len / 2, s.H / 2];
+    const n3 = T3(s.n), right = new THREE.Vector3(0, 1, 0).cross(n3);           // as seen from inside the room
+    const mat = L && L.coverage > 0.05 ? new THREE.MeshBasicMaterial({ map: texOf(L.canvas) }) : new THREE.MeshLambertMaterial({ color: rgbHex(L && L.mean) ?? ROOM_COL.wall });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(s.len, s.H), mat); m.matrixAutoUpdate = false;
+    m.matrix.makeBasis(right, new THREE.Vector3(0, 1, 0), n3).setPosition(T3(mid));
+    m.userData = { mid: T3(mid), n: n3 }; g.add(m); V3.walls.push(m);
+  }
+  // ceiling (bounding box, facing down)
+  const cl = looks && looks.ceiling;
+  const cm = new THREE.MeshBasicMaterial({ color: rgbHex(cl && cl.median) ?? ROOM_COL.ceiling });   // a plain ceiling in its real colour
+  V3.ceil = planeMesh([(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, H], [1, 0, 0], [0, 1, 0], [0, 0, -1], b.x1 - b.x0, b.y1 - b.y0, cm);
+  g.add(V3.ceil);
+  scene.add(g);
+}
+function buildFurniture() {
+  const scene = V3.scene, looks = V3.textured ? V3.looks : null;
+  if (V3.furn) scene.remove(V3.furn);
+  const g = new THREE.Group(); V3.furn = g; g.visible = V3.showFurn;
+  const L = S.layouts.find(l => l.id === V3.layoutId) || layout();
+  inLayout(L, () => {
+    for (const it of S.items) {
+      if (it.id === V3.hideId) continue;                       // the seat you're looking from
+      const p = posOf(it.id), lk = looks && looks.items[it.id];
+      // sides no photo shows: the piece's own average colour
+      const seen = lk ? Object.values(lk).filter(F => F && F.mean) : [], avg = seen.length ? [0, 1, 2].map(c => seen.reduce((a, F) => a + F.mean[c], 0) / seen.length) : null;
+      for (const f of faceList(it, p)) {
+        const F = lk && lk[f.k];
+        let mat;
+        if (F && F.canvas) mat = new THREE.MeshBasicMaterial({ map: texOf(F.canvas) });
+        else {
+          const col = rgbHex(F && F.mean) ?? rgbHex(avg) ?? (it.tv ? 0x1b1f22 : BLOCK_COLS[it.color % 6]);
+          mat = new THREE.MeshLambertMaterial({ color: col });
+        }
+        g.add(planeMesh(f.c, f.right, f.up, f.n, f.w, f.h, mat));
+      }
+    }
+  });
+  scene.add(g);
+}
+
+/* ---------- cameras ---------- */
+function v3Views() {
+  const out = [{ id: "orbit", label: "Turn around the room" }];
+  S.photos.filter(p => p.kind === "floor" && p.roomT).sort((a, b) => a.created - b.created).forEach((p, i) => out.push({ id: "photo:" + p.id, label: `From photo ${i + 1}` }));
+  const L = S.layouts.find(l => l.id === V3.layoutId) || layout();
+  inLayout(L, () => S.items.filter(isSeat).forEach(s => out.push({ id: "seat:" + s.id, label: `From the ${s.name.toLowerCase()}` })));
+  return out;
+}
+async function setV3Camera() {
+  const cam = V3.camera, view = V3.view;
+  cam.matrixAutoUpdate = true; V3.fixedAspect = null;
+  const hide = view.startsWith("seat:") ? view.slice(5) : null;
+  if (hide !== V3.hideId) { V3.hideId = hide; buildFurniture(); }
+  if (view.startsWith("photo:")) {
+    const p = S.photos.find(q => q.id === view.slice(6)); const s = p && await photoSetup(p);
+    if (s && s.cam) {
+      const r = camInRoom(s.cam, s.T), up = r.down.map(x => -x), back = r.fwd.map(x => -x);
+      cam.matrixAutoUpdate = false;
+      cam.matrix.makeBasis(T3(r.right), T3(up), T3(back)).setPosition(T3(r.pos));
+      if (cam.matrix.determinant() < 0) cam.matrix.makeBasis(T3(r.right).negate(), T3(up), T3(back)).setPosition(T3(r.pos));
+      cam.matrixWorldNeedsUpdate = true;
+      cam.fov = 2 * Math.atan(s.img.height / 2 / s.cam.f) / DEG; V3.fixedAspect = s.img.width / s.img.height; V3.photoCamFlip = cam.matrix.determinant() < 0;
+    }
+  } else if (view.startsWith("seat:")) {
+    const L = S.layouts.find(l => l.id === V3.layoutId) || layout();
+    inLayout(L, () => {
+      const seat = itemById(view.slice(5)), tv = S.items.find(i => i.tv);
+      const p = posOf(seat.id), { v } = axes(p.r), back = Math.min(seat.d * 0.2, 25);
+      const eye = [p.x - v.x * back, p.y - v.y * back, 108];      // seated eye height, a little back from the seat's middle
+      let target = [roomCenter().x, roomCenter().y, 100];
+      if (tv) { const f = tvFront(tv); target = [f.p.x, f.p.y, topOf(tv) - tv.h / 2]; }
+      cam.position.copy(T3(eye)); cam.up.set(0, 1, 0); cam.lookAt(T3(target)); cam.fov = 65;
+    });
+  } else {
+    const c = roomCenter(), o = V3.orbit, tgt = new THREE.Vector3(c.x, 60, c.y);
+    cam.position.set(tgt.x + o.r * Math.sin(o.ph) * Math.cos(o.th), tgt.y + o.r * Math.cos(o.ph), tgt.z + o.r * Math.sin(o.ph) * Math.sin(o.th));
+    cam.up.set(0, 1, 0); cam.lookAt(tgt); cam.fov = 50;
+  }
+  cam.updateProjectionMatrix();
+}
+function v3Size() {
+  const r = v3stage.getBoundingClientRect(); let w = r.width, h = r.height;
+  if (V3.fixedAspect) { if (w / h > V3.fixedAspect) w = h * V3.fixedAspect; else h = w / V3.fixedAspect; }
+  V3.renderer.setSize(Math.floor(w), Math.floor(h)); V3.camera.aspect = w / h; V3.camera.updateProjectionMatrix();
+}
+function v3Render() {
+  if (!V3.renderer) return;
+  const cam = V3.camera; if (!cam.matrixAutoUpdate) cam.matrixWorldInverse.copy(cam.matrix).invert(); else cam.updateMatrixWorld();
+  const cp = new THREE.Vector3().setFromMatrixPosition(cam.matrixAutoUpdate ? cam.matrixWorld : cam.matrix);
+  const H = S.room.height || 250;
+  // walls between the camera and the room are hidden, and the ceiling when looking from above
+  V3.walls.forEach(m => { m.visible = cp.clone().sub(m.userData.mid).dot(m.userData.n) > -5; });
+  if (V3.ceil) V3.ceil.visible = cp.y < H - 2;
+  if (!cam.matrixAutoUpdate) { cam.matrixWorld.copy(cam.matrix); cam.matrixWorldInverse.copy(cam.matrix).invert(); V3.renderer.render(V3.scene, cam); }
+  else V3.renderer.render(V3.scene, cam);
+}
+async function open3D() {
+  v3el.hidden = false; v3msg.textContent = "Loading the 3D view…";
+  try { await loadThree(); } catch (e) { v3msg.textContent = "The 3D view couldn't load. It needs an internet connection the first time."; return; }
+  if (!V3.renderer) {
+    V3.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    V3.renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1)); v3stage.appendChild(V3.renderer.domElement);
+    V3.scene = new THREE.Scene(); V3.scene.background = new THREE.Color(0x3b4447);
+    V3.scene.add(new THREE.AmbientLight(0xffffff, 0.75)); const dl = new THREE.DirectionalLight(0xffffff, 0.45); dl.position.set(0.4, 1, 0.3); V3.scene.add(dl);
+    V3.camera = new THREE.PerspectiveCamera(50, 1, 5, 5000);
+    v3Pointer(V3.renderer.domElement);
+  }
+  V3.layoutId = S.current; V3.view = "orbit";
+  v3Bar(); await v3Rebuild();
+}
+async function v3Rebuild() {
+  if (V3.busy) return; V3.busy = true;
+  try {
+    if (V3.textured) { const has = S.photos.some(p => p.kind === "floor" && p.roomT); if (has) await buildLooks(); else V3.looks = null; }
+    buildRoom(); buildFurniture(); await setV3Camera(); v3Size(); v3Render();
+    v3msg.textContent = V3.textured && !V3.looks ? "Link room photos to the plan to see your real walls and furniture here." : "";
+  } finally { V3.busy = false; }
+}
+function v3Bar() {
+  $("#v3view").innerHTML = v3Views().map(v => `<option value="${v.id}" ${v.id === V3.view ? "selected" : ""}>${esc(v.label)}</option>`).join("");
+  $("#v3layout").innerHTML = S.layouts.map(l => `<option value="${l.id}" ${l.id === V3.layoutId ? "selected" : ""}>${esc(l.name)}</option>`).join("");
+  $("#v3tex").checked = V3.textured; $("#v3furn").checked = V3.showFurn;
+}
+function close3D() { v3el.hidden = true; }
+function v3Pointer(el) {
+  const pts = new Map(); let last = null, pinch = null;
+  el.addEventListener("pointerdown", e => { el.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); last = { x: e.clientX, y: e.clientY };
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), r: V3.orbit.r }; } });
+  el.addEventListener("pointermove", e => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (V3.view !== "orbit") { V3.view = "orbit"; $("#v3view").value = "orbit"; }
+    if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; V3.orbit.r = clamp(pinch.r * pinch.d / Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), 150, 3000); }
+    else if (last) { V3.orbit.th += (e.clientX - last.x) * 0.008; V3.orbit.ph = clamp(V3.orbit.ph - (e.clientY - last.y) * 0.006, 0.08, 1.5); last = { x: e.clientX, y: e.clientY }; }
+    setV3Camera().then(v3Render);
+  });
+  const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) last = null; };
+  el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+  el.addEventListener("wheel", e => { e.preventDefault(); if (V3.view !== "orbit") { V3.view = "orbit"; $("#v3view").value = "orbit"; } V3.orbit.r = clamp(V3.orbit.r * Math.exp(e.deltaY * 0.001), 150, 3000); setV3Camera().then(v3Render); }, { passive: false });
+}
+async function save3D() {
+  if (!V3.renderer) return;
+  const keep = V3.renderer.getSize(new THREE.Vector2()), pr = V3.renderer.getPixelRatio();
+  const w = V3.fixedAspect ? 2000 : 1800, h = V3.fixedAspect ? Math.round(2000 / V3.fixedAspect) : 1200;
+  V3.renderer.setPixelRatio(1); V3.renderer.setSize(w, h, false); V3.camera.aspect = w / h; V3.camera.updateProjectionMatrix(); v3Render();
+  const blob = await new Promise(r => V3.renderer.domElement.toBlob(r, "image/jpeg", 0.92));
+  V3.renderer.setPixelRatio(pr); V3.renderer.setSize(keep.x, keep.y); V3.camera.aspect = keep.x / keep.y; V3.camera.updateProjectionMatrix(); v3Render();
+  const L = S.layouts.find(l => l.id === V3.layoutId) || layout(), slug = L.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "room";
+  if (blob) saveFile(`room-layout-${slug}-3d.jpg`, blob, "Image saved");
+}
+v3el.addEventListener("click", e => { const b = e.target.closest("[data-v3]"); if (!b) return; if (b.dataset.v3 === "close") close3D(); if (b.dataset.v3 === "save") save3D(); });
+v3el.addEventListener("change", async e => {
+  const t = e.target;
+  if (t.id === "v3view") { V3.view = t.value; await setV3Camera(); v3Size(); v3Render(); }
+  if (t.id === "v3layout") { V3.layoutId = t.value; buildFurniture(); if (V3.view.startsWith("seat:")) await setV3Camera(); v3Render(); }
+  if (t.id === "v3tex") { V3.textured = t.checked; await v3Rebuild(); }
+  if (t.id === "v3furn") { V3.showFurn = t.checked; if (V3.furn) V3.furn.visible = V3.showFurn; v3Render(); }
+});
+window.addEventListener("resize", () => { if (!v3el.hidden && V3.renderer) { v3Size(); v3Render(); } });
 
 /* ---------- start ---------- */
 (async function init() {
