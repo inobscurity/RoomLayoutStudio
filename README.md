@@ -65,7 +65,12 @@ homography). Any two points you tap on the same surface can then be measured in 
   - **Walls, floor and ceiling:** walls are drawn in their real paint colour, with each window cut from the
     photos where the plan puts it. The floor is a clean, evenly lit sample of your real boards, tiled with
     the boards running the right way. The ceiling is plain.
-  - **Furniture:** each piece is a block wearing its own pictures, front, sides and top, cut from the photo
+  - **Modelled furniture** (the default): each piece is built from simple parts at its exact measurements.
+    A sofa gets a base, cushions and arms, a bookcase gets shelves and rows of books coloured from your
+    photo, and a lamp gets a tripod and shade. Each is coloured from your photos, ignoring colours that
+    can't belong to that kind of piece. The shape is worked out from the name, or chosen in the piece's
+    settings (**Shape in the 3D view**).
+  - **Photo blocks** (the other option): each piece is a block wearing its own pictures, front, sides and top, cut from the photo
     that shows each side best. Parts of a block that show the room behind the piece, not the piece itself,
     are cut away, so pieces keep roughly their real outline. Sides no photo shows are drawn flat in the
     piece's own colour.
@@ -93,6 +98,8 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   lying on the floor so other furniture can stand on them.
 - **Typed gaps:** the gaps to the walls in the panel can be typed in. Enter a distance you measured with a
   tape and the piece moves exactly there. This is handy for pieces you couldn't measure in a photo.
+- **Openings:** **Room → Add opening** marks a gap in a wall with no door, such as a stairwell or an
+  archway, with its width and height. It shows on the plan and in the 3D view.
 - **Windows** have a sill height and a window height (Room tab, select the window). Furniture within 60 cm
   of a window, and taller than its sill, is flagged. That shows whether a TV on its cabinet would cover the
   window. Windows and doors are also drawn in the photo Preview.

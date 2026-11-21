@@ -318,12 +318,13 @@ details.presets summary::-webkit-details-marker { display: none; }
     <h2>3D view</h2>
     <select class="in" id="v3view" aria-label="Viewpoint"></select>
     <select class="in" id="v3layout" aria-label="Layout"></select>
+    <select class="in" id="v3shape" aria-label="How furniture is drawn"><option value="model">Modelled furniture</option><option value="photo">Photo blocks</option></select>
     <label class="toggle"><input type="checkbox" id="v3tex"> Real surfaces from photos</label>
     <label class="toggle"><input type="checkbox" id="v3furn"> Furniture</label>
     <button class="btn sm tape" data-v3="save">Save image</button>
   </div>
   <div class="v3stage" id="v3stage"><div class="v3msg" id="v3msg"></div></div>
-  <p class="v3hint">Drag to turn the room, scroll or pinch to zoom. Furniture is shown as blocks wearing pictures cut from your photos; sides no photo shows get a plain colour.</p>
+  <p class="v3hint">Drag to turn the room, scroll or pinch to zoom. Modelled furniture is built to each piece's measurements and coloured from your photos; choose its shape in the piece's settings if it guessed wrong.</p>
 </div>
 <div class="toast" id="toast" hidden></div>
 
@@ -616,6 +617,8 @@ function wallInfo(i) {
 const isOpen = i => !!(S.room.open && S.room.open[i]);
 const solidEdges = () => edges(S.room.pts).filter((_, i) => !isOpen(i));
 const winSill = o => o.sill ?? 90, winH = o => o.h ?? 120, DOOR_H = 205;
+/* bottom and top of an opening in its wall: windows from the sill, doors and openings from the floor */
+const opZ = o => o.type === "window" ? [winSill(o), winSill(o) + winH(o)] : o.type === "opening" ? [0, o.h ?? 210] : [0, DOOR_H];
 /* a piece near a window (within 60 cm of its wall, overlapping it along the wall) whose top is above the sill */
 function windowBlock(it) {
   if (it.floor || !(it.h > 0)) return null;
@@ -806,6 +809,8 @@ function planMarkup(k) {
       const sweep = V.cross(V.sub(leaf, hinge), V.sub(other, hinge)) > 0 ? 1 : 0;
       g += `<line class="op-line" stroke-width="${2.2 * k}" x1="${f(hinge.x)}" y1="${f(hinge.y)}" x2="${f(leaf.x)}" y2="${f(leaf.y)}"/>`;
       g += `<path class="op-arc" stroke-width="${1.2 * k}" d="M${f(leaf.x)} ${f(leaf.y)}A${f(o.w)} ${f(o.w)} 0 0 ${sweep} ${f(other.x)} ${f(other.y)}"/>`;
+    } else if (o.type === "opening") {
+      g += `<line class="op-arc" stroke-width="${1.4 * k}" x1="${f(a1.x)}" y1="${f(a1.y)}" x2="${f(a2.x)}" y2="${f(a2.y)}"/>`;
     } else {
       for (const off of [2.5, 6.5, 10.5]) {
         const b1 = V.add(a1, V.mul(out, off)), b2 = V.add(a2, V.mul(out, off));
@@ -1084,6 +1089,7 @@ function panelFurniture() {
         <div class="dists">${cl.map((c, i) => `<label class="dist" style="align-items:center"><span>${c.side}${c.kind === "item" ? ` <span class="muted">(${esc(c.name)})</span>` : ""}</span>${isFinite(c.dist) ? `<input class="in num" id="f-gap${i}" data-gap="${i}" value="${esc(fmtIn(Math.round(c.dist)))}" style="width:76px;min-height:30px;padding:3px 6px;text-align:right" inputmode="decimal">` : "<b>–</b>"}</label>`).join("")}</div>
         <p class="tip" style="margin:0">Type a gap you measured with a tape to move the piece exactly.</p>
       </div>
+      <label class="f">Shape in the 3D view<select class="in" id="f-shape" data-f="shape">${SHAPES.map(([k, l]) => `<option value="${k}" ${(it.shape || "auto") === k ? "selected" : ""}>${esc(k === "auto" ? `${l} (${SHAPES.find(x => x[0] === shapeOf({ ...it, shape: "auto" }))?.[1] || "Plain block"})` : l)}</option>`).join("")}</select></label>
       <div class="sec" style="gap:6px"><h3>This piece is</h3>
         <label class="toggle"><input type="checkbox" id="f-tv" data-f="tv" ${it.tv ? "checked" : ""}> A TV or screen</label>
         <label class="toggle"><input type="checkbox" id="f-seat" data-f="seat" ${isSeat(it) ? "checked" : ""} ${it.tv || it.floor ? "disabled" : ""}> Somewhere people sit (for TV viewing distance)</label>
@@ -1167,12 +1173,14 @@ function panelRoom() {
   let h = "";
   if (sel && sel.type === "op") {
     const o = S.openings.find(q => q.id === sel.id);
-    h += `<div class="card sel"><b style="font:600 16px var(--font-display)">${o.type === "door" ? "Door" : "Window"}</b>
+    h += `<div class="card sel"><b style="font:600 16px var(--font-display)">${o.type === "door" ? "Door" : o.type === "opening" ? "Opening" : "Window"}</b>
       <div class="grid2"><label class="f">Width<input class="in num" id="o-w" data-o="w" value="${esc(fmtIn(o.w))}"></label>
       <label class="f">From wall corner<input class="in num" id="o-t" data-o="t" value="${esc(fmtIn(o.t - o.w / 2))}"></label></div>
       ${o.type === "window" ? `<div class="grid2"><label class="f">Sill height (from floor)<input class="in num" id="o-sill" data-o="sill" value="${esc(fmtIn(winSill(o)))}"></label>
       <label class="f">Window height<input class="in num" id="o-h" data-o="h" value="${esc(fmtIn(winH(o)))}"></label></div>
       <p class="tip">Furniture near this window that's taller than the sill is flagged, so you can check a TV or bookcase won't cover it.</p>` : ""}
+      ${o.type === "opening" ? `<label class="f">Height of the opening<input class="in num" id="o-h" data-o="h" value="${esc(fmtIn(o.h ?? 210))}"></label>
+      <p class="tip">A gap in the wall with no door, such as a stairwell or an archway. Furniture still can't stand in it.</p>` : ""}
       <div class="row">${o.type === "door" ? `<button class="btn sm" data-act="flip-h">Swap hinge side</button><button class="btn sm" data-act="flip-io">Open in / out</button>` : ""}
       <button class="btn sm danger" data-act="del-op">Delete</button></div>
       <p class="tip">Drag it along the walls on the plan.</p></div>`;
@@ -1197,6 +1205,7 @@ function panelRoom() {
   </div>
   <div class="sec"><h3>Doors and windows</h3>
     <div class="grid2"><button class="btn" data-act="add-door">Add door</button><button class="btn" data-act="add-window">Add window</button></div>
+    <button class="btn" data-act="add-opening">Add opening (stairs, archway)</button>
   </div>
   <div class="sec"><label class="toggle"><input type="checkbox" id="r-snap" data-act="snap" ${S.snap ? "checked" : ""}> Snap furniture to walls</label></div>`;
   return h;
@@ -1270,7 +1279,7 @@ pbody.addEventListener("click", e => {
     case "distTo": S.distTo = b.dataset.v; renderAll(); save(); break;
     case "edit-room": editRoom = !editRoom; if (editRoom) sel = null; renderAll(); break;
     case "make-rect": { commit(); const bb = roomBox(), old = S.room.pts; S.room.pts = [{ x: 0, y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: 0 }, { x: Math.round(bb.x1 - bb.x0), y: Math.round(bb.y1 - bb.y0) }, { x: 0, y: Math.round(bb.y1 - bb.y0) }]; S.room.open = []; reattachOpenings(old); renderAll(); fit(); save(); break; }
-    case "add-door": case "add-window": {
+    case "add-door": case "add-window": case "add-opening": {
       commit();
       let best = { len: -1, wall: 0, t: 0 };
       S.room.pts.forEach((_, i) => {
@@ -1279,7 +1288,8 @@ pbody.addEventListener("click", e => {
         let at = 0;
         for (const [s0, s1] of [...taken, [L, L]]) { if (s0 - at > best.len) best = { len: s0 - at, wall: i, t: (at + s0) / 2 }; at = Math.max(at, s1); }
       });
-      const isDoor = a === "add-door", o = { id: uid(), type: isDoor ? "door" : "window", wall: best.wall, t: best.t, w: Math.min(isDoor ? 85 : 120, Math.max(40, best.len - 10)), flip: 0, ...(isDoor ? {} : { sill: 90, h: 120 }) };
+      const isDoor = a === "add-door", isGap = a === "add-opening";
+      const o = { id: uid(), type: isDoor ? "door" : isGap ? "opening" : "window", wall: best.wall, t: best.t, w: Math.min(isDoor ? 85 : 120, Math.max(40, best.len - 10)), flip: 0, ...(isDoor ? {} : isGap ? { h: 210 } : { sill: 90, h: 120 }) };
       clampOp(o); S.openings.push(o); sel = { type: "op", id: o.id }; renderAll(); save(); break;
     }
     case "select-wall": sel = { type: "wall", i: +b.dataset.i }; renderPlan(); renderPanel(); break;
@@ -1332,6 +1342,7 @@ pbody.addEventListener("change", e => {
     if (k === "name") { commit(); it.name = t.value.trim() || "Untitled"; }
     else if (k === "floor") { commit(); it.floor = t.checked; if (it.floor) { childrenOf(it.id).forEach(c => unstack(c, true)); unstack(it, true); } }
     else if (k === "seat") { commit(); it.seat = t.checked; }
+    else if (k === "shape") { commit(); it.shape = t.value === "auto" ? undefined : t.value; }
     else if (k === "tv") { commit(); if (t.checked) it.tv = { size: tvSizeFromWidth(it.w) }; else delete it.tv; }
     else if (k === "tvsize") { const v = parseFloat(String(t.value).replace(/[^\d.]/g, "")); if (v > 0 && v < 200) { commit(); it.tv.size = Math.round(v); } else toast("Type the screen size in inches, for example 55."); }
     else if (k === "on") { commit(); if (!t.value) unstack(it, false); else { const nb = itemById(t.value); if (canStackOn(it, nb)) { unstack(it, true); stackOn(it, nb); } } }
@@ -1857,7 +1868,7 @@ function drawPlanOnPhoto() {
   // windows (sill to top) and doors, drawn on their walls
   for (const o of S.openings) {
     const w = wallInfo(o.wall), c = opCenter(o), a1 = V.add(c, V.mul(w.e, -o.w / 2)), a2 = V.add(c, V.mul(w.e, o.w / 2));
-    const z0 = o.type === "window" ? winSill(o) : 0, z1 = o.type === "window" ? winSill(o) + winH(o) : DOOR_H;
+    const [z0, z1] = opZ(o);
     const q = [toImg(a1, z0 || 0.01), toImg(a2, z0 || 0.01), toImg(a2, z1), toImg(a1, z1)]; if (q.some(v => !v)) continue;
     ctx.beginPath(); q.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.closePath();
     ctx.fillStyle = o.type === "window" ? "rgba(69,208,219,.15)" : "rgba(255,255,255,.08)"; ctx.fill();
@@ -2383,7 +2394,7 @@ function loadThree() {
   });
   return threeP;
 }
-const V3 = { renderer: null, scene: null, camera: null, room: null, furn: null, walls: [], ceil: null,
+const V3 = { modelled: true, renderer: null, scene: null, camera: null, room: null, furn: null, walls: [], ceil: null,
   view: "orbit", orbit: { th: -0.9, ph: 0.95, r: 900 }, textured: true, showFurn: true, layoutId: null, looks: null, looksSig: "", busy: false };
 const v3el = $("#v3d"), v3stage = $("#v3stage"), v3msg = $("#v3msg");
 const imgCache = new Map();
@@ -2541,13 +2552,14 @@ function cleanWall(Wl, s, wallIndex) {
   const im = g.getImageData(0, 0, w, h), O = im.data;
   for (const o of S.openings) {
     if (o.wall !== wallIndex) continue;
-    const z0 = o.type === "window" ? winSill(o) : 0, z1 = o.type === "window" ? winSill(o) + winH(o) : DOOR_H;
+    const [z0, z1] = opZ(o);
     const i0 = Math.max(0, Math.floor((o.t - o.w / 2) / s.len * w)), i1 = Math.min(w, Math.ceil((o.t + o.w / 2) / s.len * w));
     const j0 = Math.max(0, Math.floor((1 - z1 / s.H) * h)), j1 = Math.min(h, Math.ceil((1 - z0 / s.H) * h));
     for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
       const q = j * w + i, k = q * 4;
       if (Wl.raw && Wl.raw.got[q]) { O[k] = Wl.raw.D[k]; O[k + 1] = Wl.raw.D[k + 1]; O[k + 2] = Wl.raw.D[k + 2]; }
       else if (o.type === "window") { O[k] = 232; O[k + 1] = 236; O[k + 2] = 238; }
+      else if (o.type === "opening") { O[k] = 46; O[k + 1] = 44; O[k + 2] = 42; }
       else { O[k] = paint[0] * 0.8; O[k + 1] = paint[1] * 0.8; O[k + 2] = paint[2] * 0.8; }
       O[k + 3] = 255;
     }
@@ -2770,6 +2782,14 @@ function buildFurniture() {
   const g = new THREE.Group(); V3.furn = g; g.visible = V3.showFurn;
   const L = S.layouts.find(l => l.id === V3.layoutId) || layout();
   inLayout(L, () => {
+    if (V3.modelled) {
+      for (const it of S.items) {
+        if (it.id === V3.hideId) continue;
+        const p = posOf(it.id), m = buildModel(it, looks && looks.items[it.id]);
+        m.position.set(p.x, topOf(it) - (it.h || 0), p.y); m.rotation.y = -p.r * DEG; g.add(m);
+      }
+      return;
+    }
     for (const it of S.items) {
       if (it.id === V3.hideId) continue;                       // the seat you're looking from
       const p = posOf(it.id), lk = looks && looks.items[it.id];
@@ -2788,6 +2808,177 @@ function buildFurniture() {
     }
   });
   scene.add(g);
+}
+
+/* ---------- modelled furniture: each piece built from simple parts at its real size, coloured from the photos ---------- */
+const SHAPES = [["auto", "Work it out from the name"], ["sofa", "Sofa"], ["recliner", "Recliner"], ["armchair", "Armchair"], ["tubchair", "Round tub chair"],
+  ["ottoman", "Ottoman"], ["footstool", "Footstool"], ["table", "Table"], ["bookcase", "Bookcase"], ["cabinet", "Cabinet or TV unit"], ["wardrobe", "Wardrobe"],
+  ["tv", "TV"], ["trunks", "Trunks or boxes"], ["floorlamp", "Floor lamp"], ["treelamp", "Tree lamp"], ["record", "Record player"], ["bed", "Bed"], ["plant", "Plant"], ["box", "Plain block"]];
+function shapeOf(it) {
+  if (it.shape && it.shape !== "auto") return it.shape;
+  const n = it.name.toLowerCase();
+  if (it.tv) return "tv";
+  if (it.floor || /\brug\b|carpet|mat\b/.test(n)) return "rug";
+  const rules = [[/tv (cabinet|stand|unit)|cabinet|sideboard|dresser|console|credenza|chest of drawers|drawers/, "cabinet"], [/sofa|couch|loveseat|sectional/, "sofa"],
+    [/recliner/, "recliner"], [/round|tub|bucket|egg/, "tubchair"], [/armchair/, "armchair"], [/ottoman/, "ottoman"], [/foot ?stool|stool|pouf|pouffe/, "footstool"],
+    [/table|desk/, "table"], [/book ?case|book ?shelf|shelv/, "bookcase"], [/wardrobe|cupboard|closet|armoire/, "wardrobe"], [/trunk|box/, "trunks"],
+    [/tree lamp/, "treelamp"], [/lamp|light/, "floorlamp"], [/record|turntable/, "record"], [/bed\b/, "bed"], [/plant|tree/, "plant"], [/chair/, "armchair"]];
+  for (const [re, k] of rules) if (re.test(n)) return k;
+  return "box";
+}
+const SHAPE_COL = { sofa: 0x8b8b88, recliner: 0xa45b3c, armchair: 0x8b8b88, tubchair: 0x2b3a86, ottoman: 0x8b8b88, footstool: 0xc8b49a, table: 0x8a4a24, bookcase: 0x9a5a2a,
+  cabinet: 0x8a4a24, wardrobe: 0xe9e5dc, tv: 0x15181a, trunks: 0x6f7f62, floorlamp: 0x1d1d1d, treelamp: 0xe8e4dc, record: 0xd9cdb8, bed: 0xd8d2c6, plant: 0x4f7a3a, rug: 0x9a7f68, box: 0x9aa0a0 };
+const WOODEN = new Set(["table", "cabinet", "bookcase", "trunks", "bed"]);
+function pieceColour(it, lk, shape) {
+  const order = ["front", "right", "left", "back", "top"];      // sides first: tops collect clutter
+  for (const k of order) {
+    const F = lk && lk[k]; if (!(F && F.canvas && F.median && F.coverage > 0.3)) continue;
+    const [r, g, b] = F.median;
+    if (WOODEN.has(shape) && !(r > b + 18 && r >= g)) continue;   // timber is warm: skip greys, greens and blues
+    return new THREE.Color(r / 255, g / 255, b / 255);
+  }
+  return new THREE.Color(SHAPE_COL[shape] ?? 0x9aa0a0);
+}
+const shade = (c, k) => c.clone().multiplyScalar(k);
+function M(c) { return new THREE.MeshLambertMaterial({ color: c }); }
+/* a few pixels of a photo face, for book spines and patterned fabric */
+function faceSampler(F) {
+  if (!F || !F.canvas) return null;
+  const g = F.canvas.getContext("2d"), d = g.getImageData(0, 0, F.canvas.width, F.canvas.height).data, w = F.canvas.width, h = F.canvas.height;
+  return (u, v) => { const x = Math.min(w - 1, Math.max(0, Math.floor(u * w))), y = Math.min(h - 1, Math.max(0, Math.floor(v * h))), q = (y * w + x) * 4; return d[q + 3] ? new THREE.Color(d[q] / 255, d[q + 1] / 255, d[q + 2] / 255) : null; };
+}
+function swatch(F) {
+  if (!F || !F.canvas || F.coverage < 0.5) return null;
+  const c = document.createElement("canvas"), s0 = F.canvas, cw = Math.floor(s0.width * 0.5), ch = Math.floor(s0.height * 0.5);
+  c.width = cw; c.height = ch; c.getContext("2d").drawImage(s0, s0.width * 0.25, s0.height * 0.25, cw, ch, 0, 0, cw, ch);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+function buildModel(it, lk) {
+  const shape = shapeOf(it), g = new THREE.Group(), W = it.w, D = it.d, H = Math.max(2, it.h || 40), col = pieceColour(it, lk, shape);
+  const box = (w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y + h / 2, z); g.add(o); return o; };
+  const cyl = (rt, rb, h, x, y, z, m, seg = 14) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m); o.position.set(x, y + h / 2, z); g.add(o); return o; };
+  const legs = (h, inset, r, m, round = true) => { for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const x = sx * (W / 2 - inset), z = sz * (D / 2 - inset); round ? cyl(r, r * 0.8, h, x, 0, z, m) : box(r * 2, h, r * 2, x, 0, z, m); } };
+  const fab = M(col), fabDark = M(shade(col, 0.82)), wood = M(new THREE.Color(0x5a3a22)), lightWood = M(new THREE.Color(0xc9a274));
+  switch (shape) {
+    case "sofa": {
+      const arm = Math.min(20, W * 0.09), legH = 10, seatH = H * 0.5, n = Math.max(1, Math.min(4, Math.round((W - 2 * arm) / 70)));
+      legs(legH, 6, 2.2, lightWood);
+      box(W, seatH - legH - 12, D, 0, legH, 0, fabDark);                                    // base
+      const cw = (W - 2 * arm) / n;
+      for (let i = 0; i < n; i++) box(cw - 1.5, 13, D * 0.7, -W / 2 + arm + cw * (i + 0.5), seatH - 13, D * 0.13, fab);   // seat cushions
+      box(W - 2 * arm, H - seatH, D * 0.22, 0, seatH - 2, -D / 2 + D * 0.11, fabDark);     // back frame
+      for (let i = 0; i < n; i++) box(cw - 2, (H - seatH) * 0.85, 14, -W / 2 + arm + cw * (i + 0.5), seatH, -D / 2 + D * 0.22 + 7, fab);   // back cushions
+      for (const sx of [-1, 1]) box(arm, H * 0.7 - legH, D, sx * (W / 2 - arm / 2), legH, 0, fab);   // arms
+      break;
+    }
+    case "recliner": case "armchair": {
+      const arm = Math.min(18, W * 0.17), seatH = H * 0.45, base = shape === "recliner" ? 0 : 10;
+      if (base) legs(base, 5, 2, wood); 
+      box(W, seatH - base, D * 0.95, 0, base, D * 0.02, fabDark);
+      box(W - 2 * arm, 12, D * 0.62, 0, seatH, D * 0.12, fab);                              // seat cushion
+      box(W - 2 * arm + 4, H - seatH, D * 0.28, 0, seatH, -D / 2 + D * 0.14, fab);         // back
+      box(W - 2 * arm - 8, 16, D * 0.2, 0, H - 18, -D / 2 + D * 0.2, fabDark);             // headrest pad
+      for (const sx of [-1, 1]) box(arm, H * 0.62 - base, D * 0.95, sx * (W / 2 - arm / 2), base, D * 0.02, fab);
+      if (shape === "recliner") for (const sx of [-1, 1]) cyl(3.2, 3.2, 1, sx * (W / 2 - arm / 2), H * 0.62, D * 0.32, M(new THREE.Color(0x222222)));   // cup holders
+      break;
+    }
+    case "tubchair": {
+      const r = Math.min(W, D) / 2, seatH = H * 0.5;
+      cyl(r * 0.12, r * 0.12, seatH * 0.5, 0, 0, 0, M(new THREE.Color(0xb8954a)));                                   // swivel stem
+      for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4, l = box(r * 1.1, 3, 5, 0, 0, 0, M(new THREE.Color(0xb8954a))); l.rotation.y = a; l.position.set(Math.cos(a) * r * 0.4, 1.5, -Math.sin(a) * r * 0.4); }
+      cyl(r * 0.85, r * 0.6, seatH * 0.5, 0, seatH * 0.5, 0, fab, 24);                       // seat bowl
+      const shell = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.85, H - seatH * 0.6, 28, 1, true, Math.PI * 0.35, Math.PI * 1.3), new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide }));
+      shell.position.set(0, seatH * 0.6 + (H - seatH * 0.6) / 2, 0); g.add(shell);            // back shell, open at the front
+      break;
+    }
+    case "ottoman": { const legH = Math.min(12, H * 0.28); legs(legH, 6, 2.2, lightWood); box(W, H - legH - 10, D, 0, legH, 0, fabDark); box(W - 2, 10, D - 2, 0, H - 10, 0, fab); break; }
+    case "footstool": {
+      const legH = H * 0.45; legs(legH, 5, 2.4, wood);
+      box(W, H - legH - 6, D, 0, legH, 0, fab); box(W - 2, 6, D - 2, 0, H - 6, 0, M(shade(col, 1.08))); break;
+    }
+    case "table": {
+      const t = Math.max(3, Math.min(5, H * 0.1)), m = M(col), dark = M(shade(col, 0.75));
+      box(W, t, D, 0, H - t, 0, m); legs(H - t, 4, 2.6, dark, false);
+      box(W - 10, 2, D - 10, 0, H * 0.18, 0, dark);                                        // lower shelf
+      for (const sx of [-1, 1]) for (let i = 0; i < 6; i++) box(1.2, H * 0.55, 1.2, sx * (W / 2 - 4), H * 0.2, -D / 2 + 8 + i * (D - 16) / 5, dark);   // slatted ends
+      break;
+    }
+    case "bookcase": {
+      const t = 2.4, m = M(col), back = M(shade(col, 0.55)), n = Math.max(2, Math.round(H / 34)), sample = faceSampler(lk && lk.front);
+      box(t, H, D, -W / 2 + t / 2, 0, 0, m); box(t, H, D, W / 2 - t / 2, 0, 0, m); box(W, t * 1.5, D + 2, 0, H - t * 1.5, 0, m); box(W, 8, D, 0, 0, 0, m);
+      box(W - 2 * t, H, 1, 0, 0, -D / 2 + 0.5, back);
+      const gap = (H - 8 - t * 1.5) / n;
+      for (let s = 0; s < n; s++) {
+        const y0 = 8 + s * gap; if (s) box(W - 2 * t, t, D - 1, 0, y0 - t, 0.5, m);
+        let x = -W / 2 + t + 1;                                                                // a row of books, coloured from the photo at that shelf
+        while (x < W / 2 - t - 3) {
+          const bw = 2 + Math.random() * 3.5, bh = Math.min(gap - 3, gap * (0.65 + Math.random() * 0.25)), u = (x + W / 2) / W, v = 1 - (y0 + bh / 2) / H;
+          const c2 = (sample && sample(u, v)) || new THREE.Color().setHSL(Math.random(), 0.35, 0.45);
+          box(bw - 0.3, bh, D * 0.7, x + bw / 2, y0, -D / 2 + 1 + D * 0.35, M(c2)); x += bw;
+        }
+      }
+      break;
+    }
+    case "cabinet": {
+      const m = M(col), dark = M(shade(col, 0.7)), plinth = 6;
+      box(W, plinth, D - 4, 0, 0, -2, dark); box(W, H - plinth - 3, D, 0, plinth, 0, m); box(W + 2, 3, D + 2, 0, H - 3, 0, m);
+      const n = Math.max(1, Math.round(W / 50)), pw = W / n;
+      for (let i = 0; i < n; i++) { box(pw - 6, H - plinth - 12, 1, -W / 2 + pw * (i + 0.5), plinth + 4, D / 2 + 0.5, dark); cyl(1, 1, 2, -W / 2 + pw * (i + 0.5) + (i % 2 ? -pw / 2 + 6 : pw / 2 - 6), H * 0.55, D / 2 + 1.5, M(new THREE.Color(0x2a2a2a))); }
+      break;
+    }
+    case "wardrobe": {
+      const m = M(col), line = M(shade(col, 0.8));
+      box(W, H, D, 0, 0, 0, m); box(1, H - 6, 1, 0, 3, D / 2 + 0.5, line);
+      for (const sx of [-1, 1]) cyl(1.2, 1.2, 1.5, sx * 5, H * 0.5, D / 2 + 1, M(new THREE.Color(0x222222)));
+      break;
+    }
+    case "tv": {
+      const black = M(new THREE.Color(0x0f1112)), screen = new THREE.MeshLambertMaterial({ color: 0x1b2328 }), standH = Math.min(8, H * 0.1), ph = H - standH;
+      box(W, ph, 4, 0, standH, -D / 2 + 6, black); box(W - 3, ph - 3, 0.5, 0, standH + 1.5, -D / 2 + 8.2, screen);
+      for (const sx of [-1, 1]) { box(4, standH, D * 0.8, sx * W * 0.4, 0, 0, black); }
+      break;
+    }
+    case "trunks": {
+      const lower = shade(col, 0.85), upper = new THREE.Color(0x7c8a72);
+      box(W, H * 0.48, D, 0, 0, 0, M(lower)); box(W - 3, H * 0.5, D - 2, 0, H * 0.48, 0, M(upper));
+      for (const yy of [H * 0.24, H * 0.72]) box(12, 2, 1, 0, yy, D / 2, M(new THREE.Color(0x3a3a3a)));
+      break;
+    }
+    case "floorlamp": {
+      const black = M(new THREE.Color(0x1b1b1b)), gold = new THREE.MeshLambertMaterial({ color: 0xc9a24a, side: THREE.DoubleSide }), hub = H * 0.62, r = Math.min(W, D) / 2;
+      for (let i = 0; i < 3; i++) {
+        const a = i * Math.PI * 2 / 3, fx = Math.cos(a) * r * 0.9, fz = Math.sin(a) * r * 0.9, len = Math.hypot(fx, fz, hub);
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, len, 6), black); leg.position.set(fx / 2, hub / 2, fz / 2);
+        leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-fx, hub, -fz).normalize()); g.add(leg);
+      }
+      cyl(1.2, 1.2, H * 0.2, 0, hub, 0, black);
+      const shadeR = Math.min(r * 1.1, 28), sh = new THREE.Mesh(new THREE.SphereGeometry(shadeR, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x1b1b1b, side: THREE.DoubleSide }));
+      sh.position.set(0, H - shadeR * 0.5, 0); sh.rotation.x = Math.PI * 0.75; g.add(sh);
+      const inner = new THREE.Mesh(new THREE.SphereGeometry(shadeR * 0.97, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), gold); inner.position.copy(sh.position); inner.rotation.copy(sh.rotation); g.add(inner);
+      break;
+    }
+    case "treelamp": {
+      const white = M(new THREE.Color(0xeeeae2));
+      cyl(Math.min(W, D) * 0.35, Math.min(W, D) * 0.4, 3, 0, 0, 0, white); cyl(1.2, 1.6, H * 0.55, 0, 3, 0, white);
+      for (let i = 0; i < 9; i++) {
+        const a = i * 2.3, y0 = H * (0.35 + (i % 4) * 0.12), len = H * (0.22 + (i % 3) * 0.06), lean = 0.6;
+        const br = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, len, 5), white); br.position.set(Math.cos(a) * len * lean * 0.5, y0 + len * 0.4, Math.sin(a) * len * lean * 0.5);
+        br.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(Math.cos(a) * lean, 1, Math.sin(a) * lean).normalize()); g.add(br);
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(2.2, 6, 4), M(new THREE.Color(0xf4f1e6))); leaf.position.set(Math.cos(a) * len * lean, y0 + len * 0.85, Math.sin(a) * len * lean); g.add(leaf);
+      }
+      break;
+    }
+    case "record": {
+      box(W, H - 12, D, 0, 0, 0, M(col)); box(W, 10, D, 0, H - 12, 0, M(new THREE.Color(0x3a2a1e)));
+      cyl(Math.min(W, D) * 0.4, Math.min(W, D) * 0.4, 1.2, -W * 0.05, H - 2, 0, M(new THREE.Color(0x111111)), 24);
+      break;
+    }
+    case "bed": { box(W, H * 0.4, D, 0, 0, 0, M(new THREE.Color(0x6a4a30))); box(W - 4, H * 0.3, D - 6, 0, H * 0.4, 3, M(col)); box(W, H * 1.6, 6, 0, 0, -D / 2 + 3, M(new THREE.Color(0x6a4a30))); break; }
+    case "plant": { cyl(W * 0.3, W * 0.22, H * 0.3, 0, 0, 0, M(new THREE.Color(0x8a5a3a))); const s2 = new THREE.Mesh(new THREE.SphereGeometry(Math.min(W, D) * 0.5, 12, 8), M(col)); s2.position.set(0, H * 0.65, 0); s2.scale.y = (H * 0.7) / Math.min(W, D); g.add(s2); break; }
+    case "rug": box(W, 1, D, 0, 0, 0, M(col)); break;
+    default: box(W, H, D, 0, 0, 0, M(col));
+  }
+  return g;
 }
 
 /* ---------- cameras ---------- */
@@ -2871,7 +3062,7 @@ async function v3Rebuild() {
 function v3Bar() {
   $("#v3view").innerHTML = v3Views().map(v => `<option value="${v.id}" ${v.id === V3.view ? "selected" : ""}>${esc(v.label)}</option>`).join("");
   $("#v3layout").innerHTML = S.layouts.map(l => `<option value="${l.id}" ${l.id === V3.layoutId ? "selected" : ""}>${esc(l.name)}</option>`).join("");
-  $("#v3tex").checked = V3.textured; $("#v3furn").checked = V3.showFurn;
+  $("#v3tex").checked = V3.textured; $("#v3furn").checked = V3.showFurn; $("#v3shape").value = V3.modelled ? "model" : "photo";
 }
 function close3D() { v3el.hidden = true; }
 function v3Pointer(el) {
@@ -2905,6 +3096,7 @@ v3el.addEventListener("change", async e => {
   if (t.id === "v3view") { V3.view = t.value; await setV3Camera(); v3Size(); v3Render(); }
   if (t.id === "v3layout") { V3.layoutId = t.value; buildFurniture(); if (V3.view.startsWith("seat:")) await setV3Camera(); v3Render(); }
   if (t.id === "v3tex") { V3.textured = t.checked; await v3Rebuild(); }
+  if (t.id === "v3shape") { V3.modelled = t.value === "model"; buildFurniture(); v3Render(); }
   if (t.id === "v3furn") { V3.showFurn = t.checked; if (V3.furn) V3.furn.visible = V3.showFurn; v3Render(); }
 });
 window.addEventListener("resize", () => { if (!v3el.hidden && V3.renderer) { v3Size(); v3Render(); } });
