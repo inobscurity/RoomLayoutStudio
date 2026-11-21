@@ -1506,7 +1506,8 @@ $("#importFile").addEventListener("change", async e => {
   try {
     const d = JSON.parse(await f.text());
     if (!d || !d.room || !Array.isArray(d.room.pts) || !Array.isArray(d.items) || !Array.isArray(d.layouts) || !d.layouts.length) throw new Error("shape");
-    commit(); S = Object.assign(blankProject(), d, { isExample: false }); if (!S.layouts.find(l => l.id === S.current)) S.current = S.layouts[0].id;
+    S = Object.assign(blankProject(), d, { isExample: false, bannerHidden: true }); if (!S.layouts.find(l => l.id === S.current)) S.current = S.layouts[0].id;
+    undoStack = []; redoStack = [];   // an import replaces the whole project, photos included: nothing to undo back into
     sel = null; renderAll(); fit(); save(); toast("Project imported");
   } catch (err) { toast(f.size < 200 ? "That file is empty. Download the project file again, then import it." : "That file isn't a Room Layout Studio project. Choose the .json project file."); }
 });
