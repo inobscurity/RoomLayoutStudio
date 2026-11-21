@@ -1533,7 +1533,7 @@ function arrangeCost(C, detail) {
   for (const it of C.items) {
     if (it.on || !WALL_SHAPES.has(shapeOf(it))) continue;
     const p = posOf(it.id), { v } = axes(p.r), back = V.add(p, V.mul(v, -it.d / 2 + 3)), d = toWall(back, V.mul(v, -1), C.walls) - 3;   // from just in front of the back
-    if (d > 2) add(Math.min(150, d) * 1.8 + 15, `${it.name} isn't against a wall`);
+    if (d > 2) add(Math.min(150, d) * 1.8 + 15 + (childrenOf(it.id).some(c => c.tv) ? 250 : 0), `${it.name} isn't against a wall`);   // a TV unit never floats
   }
   const OPEN_OK = new Set(["sofa", "recliner", "armchair", "tubchair", "table", "footstool", "ottoman", "box", "diningtable", "diningchair", "bed", "nightstand"]);
   for (const it of C.items) {
@@ -1896,7 +1896,8 @@ async function arrangeForMe() {
     const moving = C.movable.map(i => i.name).sort((x, y) => y.length - x.length);
     const judged = picks.map(res => { TEMP_LAYOUT = { id: "arrange-tmp", pos: res.pos }; const keep = S.current; S.current = "arrange-tmp";
       try { const d = arrangeCost(C, true); return { res, d, own: d.why.filter(w => w[1] && moving.some(n => w[1].includes(n))).reduce((t, w) => t + w[0], 0) }; } finally { S.current = keep; TEMP_LAYOUT = null; } });
-    const hard = j => j.d.why.filter(w => w[0] >= 250 && moving.some(n => w[1].includes(n))).length;   // must-keep rules broken by moving pieces
+    const allNames = S.items.map(i => i.name);
+    const hard = j => j.d.why.filter(w => w[0] >= 250 && (moving.some(n => w[1].includes(n)) || !allNames.some(n => w[1].includes(n)))).length;   // must-keep rules broken by moving pieces, or walkways
     const good = judged.filter((j, i) => i === 0 || (j.own <= judged[0].own * 1.5 + 80 && hard(j) <= hard(judged[0])));
     const made = good.map((j, i) => { const L = { id: uid(), name: `Suggestion ${i + 1}`, pos: j.res.pos, suggested: true }; S.layouts.push(L); return L; });
     ARR.report = made.map((L, i) => ({ id: L.id, ...good[i].d }));
@@ -3463,8 +3464,8 @@ function shapeOf(it) {
   if (/dining chair|kitchen chair/.test(n) || (dining && /\bchair\b/.test(n) && !/arm|recliner|easy/.test(n))) return "diningchair";
   if (/night ?stand|bedside|night table/.test(n)) return "nightstand";
   if (/\bdesk\b/.test(n) && !/chair|lamp/.test(n)) return "desk";
-  const rules = [[/tv (cabinet|stand|unit)|cabinet|sideboard|dresser|console|credenza|chest of drawers|drawers/, "cabinet"], [/sofa|couch|loveseat|sectional/, "sofa"],
-    [/recliner/, "recliner"], [/round|tub|bucket|egg/, "tubchair"], [/armchair/, "armchair"], [/ottoman/, "ottoman"], [/foot ?stool|stool|pouf|pouffe/, "footstool"],
+  const rules = [[/tv (cabinet|stand|unit)|cabinet|sideboard|dresser|console|credenza|chest of drawers|drawers/, "cabinet"], [/recliner/, "recliner"], [/sofa|couch|loveseat|sectional/, "sofa"],
+    [/round|tub|bucket|egg/, "tubchair"], [/armchair/, "armchair"], [/ottoman/, "ottoman"], [/foot ?stool|stool|pouf|pouffe/, "footstool"],
     [/\btable\b/, "table"], [/book ?case|book ?shelf|shelv/, "bookcase"], [/wardrobe|cupboard|closet|armoire/, "wardrobe"], [/trunk|box/, "trunks"],
     [/tree lamp/, "treelamp"], [/lamp|light/, "floorlamp"], [/record|turntable/, "record"], [/bed\b/, "bed"], [/plant|tree/, "plant"], [/chair/, "armchair"]];
   for (const [re, k] of rules) if (re.test(n)) return k;
