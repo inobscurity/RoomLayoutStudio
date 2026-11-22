@@ -322,6 +322,7 @@ details.presets summary::-webkit-details-marker { display: none; }
   <div class="wbar" id="wbar"></div>
 </div>
 <input type="file" id="importFile" accept=".json,application/json" hidden>
+<input type="file" id="productFile" accept="image/*" hidden>
 <div id="v3d" hidden>
   <div class="wtop v3top">
     <button class="btn sm" data-v3="close" style="background:#20292c;border-color:#2f3a3c;color:#e8eeec">Done</button>
@@ -901,7 +902,7 @@ function planMarkup(k) {
       if (showDim) txt += `<text class="idim" font-size="${f(nfs * 0.85)}" y="${f(nfs * 0.7)}">${esc(fmt(it.w))} × ${esc(fmt(it.d))}</text>`;
     }
     h += `<g class="${cls}" transform="translate(${f(p.x)} ${f(p.y)}) rotate(${f(p.r)})">` +
-      `<rect class="body" data-hit="item" data-id="${it.id}" x="${f(-it.w / 2)}" y="${f(-it.d / 2)}" width="${f(it.w)}" height="${f(it.d)}" rx="${Math.min(3, it.w / 6, it.d / 6)}" stroke-width="${(on ? 2.2 : it.on ? 1.6 : 1.2) * k}" style="fill:${it.tv ? "var(--wall)" : `var(--f${it.color % 6})`};fill-opacity:${it.floor ? 0.55 : it.tv ? 1 : 0.95}"/>` +
+      `<rect class="body" data-hit="item" data-id="${it.id}" x="${f(-it.w / 2)}" y="${f(-it.d / 2)}" width="${f(it.w)}" height="${f(it.d)}" rx="${Math.min(3, it.w / 6, it.d / 6)}" stroke-width="${(on ? 2.2 : it.on ? 1.6 : 1.2) * k}" style="fill:${it.tv ? "var(--wall)" : it.rgb ? `rgba(${it.rgb.join(",")},.6)` : `var(--f${it.color % 6})`};fill-opacity:${it.floor ? 0.55 : it.tv ? 1 : 0.95}"/>` +
       (it.tv ? `<line class="tv-screen" stroke-width="${2.5 * k}" x1="${f(-it.w / 2 + 2)}" y1="${f(it.d / 2)}" x2="${f(it.w / 2 - 2)}" y2="${f(it.d / 2)}" pointer-events="none"/>` : "") +
       `<g transform="rotate(${tr})">${txt}</g></g>`;
     if (!txt && !it.tv && !it.on && !it.floor) {   // too small for its name inside: label it just below
@@ -1162,6 +1163,7 @@ function panelFurniture() {
     <div class="grid2">
       <button class="btn" data-act="photo-face">From a photo</button>
       <button class="btn" data-act="add-custom">Custom size</button>
+      <button class="btn" data-act="add-product" style="grid-column:1 / -1">From a product photo (a website listing)</button>
     </div>
     <details class="presets"><summary class="btn sm" style="width:max-content">Common sizes ▾</summary>
       <div class="chips" style="margin-top:8px"><button class="chip" data-act="preset-combo" style="border-color:var(--sel)">TV stand with a TV on it</button>${PRESETS.map((p, i) => `<button class="chip" data-act="preset" data-i="${i}">${esc(p[0])}</button>`).join("")}</div>
@@ -1321,13 +1323,14 @@ pbody.addEventListener("click", e => {
   const op = sel && sel.type === "op" ? S.openings.find(o => o.id === sel.id) : null;
   switch (a) {
     case "select": selectItem(b.dataset.id); break;
-    case "color": commit(); it.color = +b.dataset.c; renderAll(); save(); break;
+    case "color": commit(); it.color = +b.dataset.c; delete it.rgb; renderAll(); save(); break;
     case "rot90": rotate90(); break;
     case "dup": { const p = posOf(it.id); const n = addItem(it.name, it.w, it.d, it.h, it.floor, { x: p.x + 20, y: p.y + 20, r: p.r }, it.thumb, { tv: it.tv, seat: it.seat }); n.color = it.color; renderAll(); break; }
     case "del-item": removeItem(it.id); break;
     case "measure-item": openWizard("face", { target: it.id }); break;
     case "photo-face": openWizard("face"); break;
     case "photo-room": openWizard("floor"); break;
+    case "add-product": $("#productFile").click(); break;
     case "add-custom": addItem("New piece", 100, 50, 0); setTimeout(() => $("#f-name")?.select(), 0); break;
     case "preset": { const p = PRESETS[+b.dataset.i]; addItem(p[0], p[1], p[2], p[3], p[4], null, null, p[5]); break; }
     case "preset-combo": { const st = addItem("TV stand", 160, 40, 50); addTvOn(st, 55); break; }
@@ -1959,6 +1962,34 @@ $("#guide").addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#guide").hidden) $("#guide").hidden = true; });
 
+/* ---------- furniture from a product photo ---------- */
+/* The photo becomes the piece's picture; its main colour is the middle colour of the centre of the photo,
+   leaving out the white or pale-grey background shops photograph on. Sizes come from the listing. */
+async function productPhotoColour(img) {
+  const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d");
+  g.drawImage(img, 0, 0, 64, 64); const d = g.getImageData(12, 12, 40, 40).data, ch = [[], [], []];
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gg = d[i + 1], b = d[i + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+    if (mx > 225 && mx - mn < 20) continue;                      // background
+    ch[0].push(r); ch[1].push(gg); ch[2].push(b);
+  }
+  if (ch[0].length < 30) return null;
+  return ch.map(a => { a.sort((x, y) => x - y); return a[a.length >> 1]; });
+}
+$("#productFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const url = URL.createObjectURL(f), img = await loadImg(url);
+    const t = document.createElement("canvas"), sc = 160 / Math.max(img.naturalWidth, img.naturalHeight);
+    t.width = Math.round(img.naturalWidth * sc); t.height = Math.round(img.naturalHeight * sc); t.getContext("2d").drawImage(img, 0, 0, t.width, t.height);
+    const rgb = await productPhotoColour(img); URL.revokeObjectURL(url);
+    const it = addItem("New furniture", 100, 50, 80, false, null, t.toDataURL("image/jpeg", 0.8), rgb ? { rgb } : null);
+    tab = "furniture"; renderAll();
+    setTimeout(() => { const n = $("#f-name"); if (n) { n.focus(); n.select(); } }, 50);
+    toast("Added. Type its name and the sizes from the website, and pick its shape for 3D.");
+  } catch (err) { toast("That file couldn't be opened as a photo."); }
+});
+
 /* ---------- export / import ---------- */
 let downloadsP = null;
 function getDownloads() { if (!downloadsP) downloadsP = window.claude && typeof window.claude.use === "function" ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null); return downloadsP; }
@@ -2057,7 +2088,7 @@ async function savePlanImage() {
       g.fillStyle = LIGHT["ink-2"]; g.font = `600 11px ${body}`; g.fillText(`FURNITURE · ${items.length}`, M, y + 34);
       items.forEach((it, i) => {
         const cx = M + (i % cols) * colW, cy = y + 58 + Math.floor(i / cols) * 24;
-        g.fillStyle = LIGHT["f" + (it.color % 6)]; g.fillRect(cx, cy - 11, 14, 14);
+        g.fillStyle = it.rgb ? `rgb(${it.rgb.join(",")})` : LIGHT["f" + (it.color % 6)]; g.fillRect(cx, cy - 11, 14, 14);
         g.strokeStyle = LIGHT.ink; g.globalAlpha = 0.5; g.strokeRect(cx + 0.5, cy - 10.5, 13, 13); g.globalAlpha = 1;
         g.fillStyle = LIGHT.ink; g.font = `600 13px ${body}`;
         const nm = it.name.length > 22 ? it.name.slice(0, 21) + "…" : it.name; g.fillText(nm, cx + 22, cy);
@@ -3489,6 +3520,7 @@ const SHAPE_COL = { sofa: 0x8b8b88, recliner: 0xa45b3c, armchair: 0x8b8b88, tubc
   cabinet: 0x8a4a24, wardrobe: 0xe9e5dc, tv: 0x15181a, trunks: 0x6f7f62, floorlamp: 0x1d1d1d, treelamp: 0xe8e4dc, record: 0xd9cdb8, bed: 0xd8d2c6, plant: 0x4f7a3a, rug: 0x9a7f68, box: 0x9aa0a0 };
 const WOODEN = new Set(["table", "cabinet", "bookcase", "trunks", "bed"]);
 function pieceColour(it, lk, shape) {
+  if (it.rgb) return new THREE.Color(it.rgb[0] / 255, it.rgb[1] / 255, it.rgb[2] / 255);   // from a product photo
   const order = ["front", "right", "left", "back", "top"];      // sides first: tops collect clutter
   for (const k of order) {
     const F = lk && lk[k]; if (!(F && F.canvas && F.median && F.coverage > 0.3)) continue;

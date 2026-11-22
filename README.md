@@ -127,6 +127,10 @@ a few percent of error with a sheet of paper. Check any measurement that matters
   automatically, and any piece can be marked as one.
 - **Room type:** in the Room tab, choose Living room, Dining room or Bedroom, or let the app work it out
   from the furniture. That decides how pieces such as dining chairs, beds and bedside tables are drawn in the 3D view.
+- **Furniture you're thinking of buying:** **Furniture → From a product photo** takes a photo from a shop's
+  website. It becomes the piece's picture, and its main colour (leaving out the white background) is used
+  on the plan and in 3D. Type the listed width, depth and height, and pick the shape for 3D if the name
+  doesn't make it clear. The photo isn't used to measure: the shop's sizes are what count.
 - **Layouts:** keep several arrangements of the same room and furniture, and switch between them.
 - **Room tab:** type the room size, drag the corners of an irregular room, and add doors (with their
   swing) and windows.
