@@ -766,9 +766,15 @@ function snapItem(it, p, tol) {
     if (Math.abs(Math.sin(2 * (p.r - wa) * DEG)) > 0.03) continue;
     const C = rectCorners(p, it.w, it.d, p.r);
     const along = C.map(c => V.dot(V.sub(c, w.a), w.e));
-    if (Math.max(...along) < 0 || Math.min(...along) > w.L) continue;
+    // only snap to a wall the piece mostly sits along (not a short step or recess it merely overlaps)
+    const lo = Math.min(...along), hi = Math.max(...along), overlap = Math.min(hi, w.L) - Math.max(lo, 0);
+    if (overlap < Math.min(hi - lo, w.L) * 0.6) continue;
     const gap = Math.min(...C.map(c => V.dot(V.sub(c, w.a), w.nIn)));
-    if (Math.abs(gap) < tol) { p.x -= w.nIn.x * gap; p.y -= w.nIn.y * gap; }
+    if (Math.abs(gap) < tol) {
+      const q = { x: p.x - w.nIn.x * gap, y: p.y - w.nIn.y * gap, r: p.r }, Q = rectCorners(q, it.w - 1, it.d - 1, p.r);
+      if (solidEdges().some(([a, b]) => Q.some((c, k) => segsCross(c, Q[(k + 1) % 4], a, b)))) continue;   // the snap would push it into another wall
+      p.x = q.x; p.y = q.y;
+    }
   }
 }
 
