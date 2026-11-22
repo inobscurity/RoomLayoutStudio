@@ -760,18 +760,28 @@ function snapOnBase(it, w, tol) {
 }
 function snapItem(it, p, tol) {
   if (!S.snap) return;
+  // For each direction, every parallel wall face within reach is a candidate (a main wall and a recess behind
+  // it, say). The one nearest where the piece is being dragged wins, so you choose: push it into the recess,
+  // or leave it lined up with the main wall. A snap that would put the piece into a wall is never offered.
+  const groups = new Map();
   for (let i = 0; i < S.room.pts.length; i++) {
     if (isOpen(i)) continue;
     const w = wallInfo(i), wa = Math.atan2(w.e.y, w.e.x) / DEG;
     if (Math.abs(Math.sin(2 * (p.r - wa) * DEG)) > 0.03) continue;
-    const C = rectCorners(p, it.w, it.d, p.r);
-    const along = C.map(c => V.dot(V.sub(c, w.a), w.e));
+    const C = rectCorners(p, it.w, it.d, p.r), along = C.map(c => V.dot(V.sub(c, w.a), w.e));
+    if (Math.max(...along) < -50 || Math.min(...along) > w.L + 50) continue;   // up to 50 cm past a wall's end still lines up with it
     const gap = Math.min(...C.map(c => V.dot(V.sub(c, w.a), w.nIn)));
-    if (Math.abs(gap) < tol) {
-      const q = { x: p.x - w.nIn.x * gap, y: p.y - w.nIn.y * gap, r: p.r }, Q = rectCorners(q, it.w - 1, it.d - 1, p.r);
-      const Qs = rectCorners(q, it.w - 2, it.d - 2, p.r);   // the snap would push it into a wall: crossing its edges, or a wall lying inside it
-      if (solidEdges().some(([a, b]) => Q.some((c, k) => segsCross(c, Q[(k + 1) % 4], a, b)) || [a, b, V.mid(a, b)].some(pt => pointInPoly(pt, Qs)))) continue;
-      p.x = q.x; p.y = q.y;
+    if (Math.abs(gap) >= tol) continue;
+    const key = `${Math.round(w.nIn.x * 10)},${Math.round(w.nIn.y * 10)}`;
+    (groups.get(key) || groups.set(key, []).get(key)).push({ w, gap });
+  }
+  const fits = q => { const Q = rectCorners(q, it.w - 1, it.d - 1, q.r), Qs = rectCorners(q, it.w - 2, it.d - 2, q.r);
+    return !solidEdges().some(([a, b]) => Q.some((c, k) => segsCross(c, Q[(k + 1) % 4], a, b)) || [a, b, V.mid(a, b)].some(pt => pointInPoly(pt, Qs))); };
+  for (const cands of groups.values()) {
+    cands.sort((x, y) => Math.abs(x.gap) - Math.abs(y.gap));
+    for (const { w, gap } of cands) {
+      const q = { x: p.x - w.nIn.x * gap, y: p.y - w.nIn.y * gap, r: p.r };
+      if (fits(q)) { p.x = q.x; p.y = q.y; break; }
     }
   }
 }
