@@ -1,0 +1,13 @@
+name: Check the security policy
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  csp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The Content-Security-Policy hash must match the page's script
+        run: |
+          python3 update-csp.py
+          git diff --exit-code index.html || { echo "index.html changed without running update-csp.py: the app would show a blank page. Run python3 update-csp.py and commit."; exit 1; }

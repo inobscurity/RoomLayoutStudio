@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-NTdBnKLagwowF3caU6wstO61pqMudwbKrCI01ILxn4c=' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <!--APP-->
 <title>Room Layout Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1173,8 +1175,8 @@ function panelFurniture() {
   h += `<div class="sec"><h3>In this room · ${S.items.length}</h3>`;
   if (!S.items.length) h += `<p class="tip">Nothing here yet. Add your first piece above, or measure it from a photo.</p>`;
   else h += `<div class="list">${listOrder().map(({ it, depth }) => `<button class="li" data-act="select" data-id="${it.id}" aria-current="${sel && sel.id === it.id}" style="padding-left:${10 + depth * 22}px">
-      <span class="thumb" style="${it.thumb ? `background-image:url(${it.thumb})` : `background:var(--f${it.color % 6})`}"></span>
-      <span class="t"><b>${depth ? "↳ " : ""}${esc(it.name)}${it.tv && it.tv.size ? ` <span class="muted">${it.tv.size}″</span>` : ""}</b><span>${esc(fmt(it.w))} × ${esc(fmt(it.d))}${it.h ? " × " + esc(fmt(it.h)) : ""}</span></span>
+      <span class="thumb" style="${cleanImg(it.thumb) ? safeBg(it.thumb) : `background:var(--f${it.color % 6})`}"></span>
+      <span class="t"><b>${depth ? "↳ " : ""}${esc(it.name)}${it.tv && it.tv.size ? ` <span class="muted">${esc(it.tv.size)}″</span>` : ""}</b><span>${esc(fmt(it.w))} × ${esc(fmt(it.d))}${it.h ? " × " + esc(fmt(it.h)) : ""}</span></span>
       ${probs[it.id] ? `<span class="dot" title="${esc(probs[it.id].join(", "))}"></span>` : ""}</button>`).join("")}</div>`;
   h += `</div>
   <div class="sec"><h3>Show distances to</h3>
@@ -1205,7 +1207,7 @@ function tvSection(it) {
     <button class="btn sm" data-act="tv-fit">Set width and height from size</button></div>
     <div class="row"><button class="btn sm" data-act="turn">Turn around</button><span class="tip">The highlighted edge is the screen.</span></div>`;
   if (size > 0) {
-    h += `<p class="tip">For a ${size}″ screen: ${esc(viewRange(size))}.</p>`;
+    h += `<p class="tip">For a ${esc(size)}″ screen: ${esc(viewRange(size))}.</p>`;
     const wb = windowBlock(it);
     if (S.openings.some(o => o.type === "window")) h += wb ? `<div class="warnline">● Its top (${esc(fmt(wb.top))}) is above the window sill (${esc(fmt(winSill(wb.o)))})</div>` : it.h ? `<p class="tip">Clear of the windows.</p>` : `<p class="tip">Add its height to check it against the window sills.</p>`;
     h += list.length ? `<div class="list">${list.slice(0, 5).map(x => viewRow(x, x.seat.name)).join("")}</div>`
@@ -1282,7 +1284,7 @@ function panelLayouts() {
   <p class="tip">Every layout uses the same room and furniture. Only positions and angles differ, so you can flip between ideas.</p></div>`;
   const linked = S.photos.filter(q => q.kind === "floor" && q.roomT).sort((a, b) => a.created - b.created);
   h += `<div class="sec"><h3>See it in your photos</h3>${linked.length
-    ? `<div class="chips">${linked.map((q, i) => `<button class="li" data-act="preview-photo" data-id="${q.id}" style="width:auto;border:1px solid var(--line);border-radius:var(--r)"><span class="thumb" style="background-image:url(${q.thumb || q.src})"></span><span class="t"><b>View ${i + 1}</b></span></button>`).join("")}</div>`
+    ? `<div class="chips">${linked.map((q, i) => `<button class="li" data-act="preview-photo" data-id="${q.id}" style="width:auto;border:1px solid var(--line);border-radius:var(--r)"><span class="thumb" style="${safeBg(q.thumb || q.src)}"></span><span class="t"><b>View ${i + 1}</b></span></button>`).join("")}</div>`
     : ""}<p class="tip">${linked.length ? "Opens the photo with this layout drawn in, from where the photo was taken." : "Room photos you measure or link to the plan show up here. Take photos from different corners to see a layout from each angle."}</p></div>`;
   return h;
 }
@@ -1290,7 +1292,7 @@ function panelProject() {
   let h = `<div class="sec"><h3>Units</h3><div class="seg"><button data-act="units" data-v="metric" aria-pressed="${S.units === "metric"}">Metric (cm)</button><button data-act="units" data-v="imperial" aria-pressed="${S.units === "imperial"}">Imperial (ft, in)</button></div></div>`;
   h += `<div class="sec"><h3>Photos · ${S.photos.length}</h3>`;
   if (!S.photos.length) h += `<p class="tip">Photos you measure are kept here so you can mark more furniture in them later.</p>`;
-  else h += `<div class="list">${S.photos.map(p => `<div class="li"><span class="thumb" style="background-image:url(${p.thumb || p.src})"></span><span class="t"><b>${p.kind === "floor" ? (p.roomT ? "Room photo · linked" : "Room photo") : "Furniture photo"}</b><span>${esc(new Date(p.created).toLocaleDateString())}</span></span><button class="btn sm" data-act="open-photo" data-id="${p.id}">Open</button><button class="btn sm icon danger" data-act="del-photo" data-id="${p.id}" aria-label="Delete photo">✕</button></div>`).join("")}</div>`;
+  else h += `<div class="list">${S.photos.map(p => `<div class="li"><span class="thumb" style="${safeBg(p.thumb || p.src)}"></span><span class="t"><b>${p.kind === "floor" ? (p.roomT ? "Room photo · linked" : "Room photo") : "Furniture photo"}</b><span>${esc(new Date(p.created).toLocaleDateString())}</span></span><button class="btn sm" data-act="open-photo" data-id="${p.id}">Open</button><button class="btn sm icon danger" data-act="del-photo" data-id="${p.id}" aria-label="Delete photo">✕</button></div>`).join("")}</div>`;
   h += `</div><div class="sec"><h3>Save and share</h3>
     <div class="grid2"><button class="btn" data-act="export">Export file</button><button class="btn" data-act="import">Import file</button></div>
     <button class="btn" data-act="save-image">Save the plan as an image</button>
@@ -1990,6 +1992,69 @@ $("#productFile").addEventListener("change", async e => {
   } catch (err) { toast("That file couldn't be opened as a photo."); }
 });
 
+/* ---------- untrusted data: project files and saved state ---------- */
+/* Everything read from a project file (or from this browser's saved copy) is rebuilt here from scratch:
+   numbers become finite numbers in a sensible range, ids plain letters and digits, pictures genuine
+   base64 image data, and anything unknown is dropped. Nothing from a file reaches the page unchecked,
+   and object keys like "__proto__" can't be used to tamper with the app. */
+const SAFE_ID = /^[A-Za-z0-9_-]{1,40}$/, BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const IMG_DATA = /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+const cleanNum = (v, d, lo, hi) => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN; return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+const cleanStr = (v, max = 120) => typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, max) : "";
+const cleanImg = v => typeof v === "string" && v.length < 25e6 && IMG_DATA.test(v) ? v : null;
+const cleanPt = p => ({ x: cleanNum(p && p.x, 0, -1e5, 1e5), y: cleanNum(p && p.y, 0, -1e5, 1e5) });
+const safeBg = v => cleanImg(v) ? `background-image:url('${v}')` : "";
+function cleanProject(d) {
+  if (!d || typeof d !== "object" || Array.isArray(d)) throw new Error("not a project");
+  const idMap = new Map();
+  const id = v => { const k = typeof v === "string" || typeof v === "number" ? String(v) : ""; if (!idMap.has(k)) idMap.set(k, SAFE_ID.test(k) && !BAD_KEYS.has(k) ? k : uid()); return idMap.get(k); };
+  const arr = (v, max) => Array.isArray(v) ? v.slice(0, max) : [];
+  const obj = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  const room = obj(d.room), pts = arr(room.pts, 200).map(cleanPt);
+  if (pts.length < 3) throw new Error("not a project");
+  const cleanPos = pos => { const out = {}; for (const k of Object.keys(obj(pos)).slice(0, 2000)) { if (BAD_KEYS.has(k)) continue; const p = obj(pos[k]); out[id(k)] = { x: cleanNum(p.x, 0, -1e5, 1e5), y: cleanNum(p.y, 0, -1e5, 1e5), r: cleanNum(p.r, 0, -3600, 3600) }; } return out; };
+  const shapeKeys = new Set(SHAPES.map(s => s[0]));
+  const items = arr(d.items, 1000).map(obj).map(it => {
+    const o = { id: id(it.id), name: cleanStr(it.name) || "Untitled", w: cleanNum(it.w, 100, 1, 5000), d: cleanNum(it.d, 50, 1, 5000), h: cleanNum(it.h, 0, 0, 1000),
+      color: Math.floor(cleanNum(it.color, 0, 0, 1e6)), floor: it.floor === true, thumb: cleanImg(it.thumb) };
+    if (it.on != null && it.on !== "") o.on = id(it.on);
+    if (it.tv && typeof it.tv === "object") o.tv = { size: Math.round(cleanNum(it.tv.size, 0, 0, 300)) };
+    if (typeof it.seat === "boolean") o.seat = it.seat;
+    if (typeof it.locked === "boolean") o.locked = it.locked;
+    if (typeof it.shape === "string" && shapeKeys.has(it.shape)) o.shape = it.shape;
+    if (Array.isArray(it.rgb) && it.rgb.length === 3) o.rgb = it.rgb.map(v => Math.round(cleanNum(v, 128, 0, 255)));
+    return o;
+  });
+  const layouts = arr(d.layouts, 200).map(obj).map(l => ({ id: id(l.id), name: cleanStr(l.name) || "Layout", pos: cleanPos(l.pos), ...(l.suggested === true ? { suggested: true } : {}) }));
+  if (!layouts.length) throw new Error("not a project");
+  const refOf = r => { r = obj(r); const p = arr(r.pts, 4).map(cleanPt); return { type: cleanStr(r.type, 20) || "custom", W: cleanNum(r.W, 21, 0.1, 1e4), H: cleanNum(r.H, 29.7, 0.1, 1e4), pts: p }; };
+  const photos = arr(d.photos, 100).map(obj).map(p => {
+    const t = p.roomT && typeof p.roomT === "object" ? { a: cleanNum(p.roomT.a, 0, -100, 100), ox: cleanNum(p.roomT.ox, 0, -1e5, 1e5), oy: cleanNum(p.roomT.oy, 0, -1e5, 1e5) } : null;
+    return { id: id(p.id), kind: p.kind === "face" ? "face" : "floor", src: cleanImg(p.src), thumb: cleanImg(p.thumb), created: cleanNum(p.created, Date.now(), 0, 1e14),
+      ref: p.ref ? refOf(p.ref) : null, roomT: t, f35: p.f35 == null ? null : cleanNum(p.f35, 26, 8, 400), f35Guess: p.f35Guess === true,
+      vlines: Array.isArray(p.vlines) ? p.vlines.slice(0, 300).map(l => arr(l, 5).map(v => cleanNum(v, 0, -1e5, 1e5))).filter(l => l.length >= 4) : null,
+      ...(p.linkedVia ? { linkedVia: id(p.linkedVia) } : {}) };
+  }).filter(p => p.src);
+  const wallCount = pts.length;
+  const openings = arr(d.openings, 200).map(obj).map(o => {
+    const type = ["door", "window", "opening"].includes(o.type) ? o.type : "window";
+    const out = { id: id(o.id), type, wall: Math.floor(cleanNum(o.wall, 0, 0, wallCount - 1)), t: cleanNum(o.t, 0, 0, 1e5), w: cleanNum(o.w, 90, 10, 5000), flip: Math.floor(cleanNum(o.flip, 0, 0, 3)) };
+    if (o.sill != null) out.sill = cleanNum(o.sill, 90, 0, 1000);
+    if (o.h != null) out.h = cleanNum(o.h, type === "opening" ? 210 : 120, 10, 1000);
+    return out;
+  });
+  const S2 = {
+    version: 1, units: d.units === "imperial" ? "imperial" : "metric", isExample: d.isExample === true, bannerHidden: d.bannerHidden === true,
+    distTo: d.distTo === "all" ? "all" : "walls", snap: d.snap !== false, showView: d.showView !== false,
+    room: { pts, height: cleanNum(room.height, 250, 100, 1000), open: pts.map((_, i) => Array.isArray(room.open) && room.open[i] === true),
+      type: ["auto", "living", "dining", "bedroom"].includes(room.type) ? room.type : "auto" },
+    openings, items, layouts, photos, current: layouts[0].id,
+  };
+  const cur = id(d.current); if (layouts.some(l => l.id === cur)) S2.current = cur;
+  if (d.photoLayout && typeof d.photoLayout === "object") S2.photoLayout = { id: "photo", name: "As photographed", pos: cleanPos(d.photoLayout.pos) };
+  return S2;
+}
+
 /* ---------- export / import ---------- */
 let downloadsP = null;
 function getDownloads() { if (!downloadsP) downloadsP = window.claude && typeof window.claude.use === "function" ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null); return downloadsP; }
@@ -2111,10 +2176,10 @@ async function savePlanImage() {
 }
 $("#importFile").addEventListener("change", async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (f.size > 200e6) { toast("That file is too large to be a project."); return; }
   try {
-    const d = JSON.parse(await f.text());
-    if (!d || !d.room || !Array.isArray(d.room.pts) || !Array.isArray(d.items) || !Array.isArray(d.layouts) || !d.layouts.length) throw new Error("shape");
-    S = Object.assign(blankProject(), d, { isExample: false, bannerHidden: true }); photoLayout(); if (!S.layouts.find(l => l.id === S.current)) S.current = S.layouts[0].id;
+    const clean = cleanProject(JSON.parse(await f.text()));
+    S = Object.assign(clean, { isExample: false, bannerHidden: true }); photoLayout();
     undoStack = []; redoStack = [];   // an import replaces the whole project, photos included: nothing to undo back into
     sel = null; renderAll(); fit(); save(); toast("Project imported");
   } catch (err) { toast(f.size < 200 ? "That file is empty. Download the project file again, then import it." : "That file isn't a Room Layout Studio project. Choose the .json project file."); }
@@ -3069,12 +3134,13 @@ function saveFace() {
    copied from the photos (leaving out where furniture stood), and
    each piece as a block wearing its own pictures.
    ================================================================ */
-const THREE_URL = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js";
+const THREE_SRI = "sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu";   // the browser refuses the file if it has been altered in any way
 let threeP = null;
 function loadThree() {
   if (window.THREE) return Promise.resolve();
   if (!threeP) threeP = new Promise((res, rej) => {
-    const s = document.createElement("script"); s.src = THREE_URL; s.onload = res;
+    const s = document.createElement("script"); s.src = THREE_URL; s.integrity = THREE_SRI; s.crossOrigin = "anonymous"; s.referrerPolicy = "no-referrer"; s.onload = res;
     s.onerror = () => { threeP = null; rej(new Error("three")); }; document.head.appendChild(s);
   });
   return threeP;
@@ -3806,7 +3872,7 @@ window.addEventListener("resize", () => { if (!v3el.hidden && V3.renderer) { v3S
 /* ---------- start ---------- */
 (async function init() {
   const saved = await idbGet("project");
-  if (saved && saved.room && Array.isArray(saved.items)) S = Object.assign(blankProject(), saved);
+  if (saved && saved.room && Array.isArray(saved.items)) { try { S = cleanProject(saved); } catch (e) { S = sampleProject(); } }
   renderAll();
   requestAnimationFrame(fit);
   try { if (S.isExample && !localStorage.getItem("rls-guide-seen")) { localStorage.setItem("rls-guide-seen", "1"); setTimeout(openGuide, 600); } } catch (e) {}

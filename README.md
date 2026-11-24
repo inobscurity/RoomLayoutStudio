@@ -148,3 +148,23 @@ photos included, that you can import on another device.
 | --- | --- |
 | `index.html` | The whole app: HTML, CSS and JavaScript. |
 | `build-artifact.sh` | Builds the copy published as a claude.ai Artifact: the same page without its `<html>`/`<head>` wrapper. |
+
+## Security
+
+The app runs entirely in your browser. It has no server, no accounts, and sends nothing anywhere: your
+measurements and photos stay in the browser unless you export a file.
+
+- **Project files are treated as untrusted.** Anything imported, and the copy saved in the browser, is
+  rebuilt field by field before use. Numbers must be numbers in sensible ranges, IDs plain letters and
+  digits, and pictures genuine base64 image data. Anything else is dropped, so a crafted project file
+  can't inject code or tamper with the app.
+- **Content-Security-Policy** (the GitHub Pages copy): the browser runs only the app's own script,
+  identified by its SHA-256 hash, and the 3D library. It blocks any other script, inline event handler,
+  plugin or network connection. The claude.ai copy runs inside claude.ai's own locked-down frame.
+- **The 3D library (three.js 0.128.0)** is loaded with a Subresource Integrity hash, so a tampered copy
+  is refused.
+- **After editing the script in `index.html`, run `python3 update-csp.py`** to update the policy's hash.
+  If you don't, the browser blocks the changed script and the app shows a blank page. A GitHub check
+  fails if the two are out of step.
+- **Exported project files contain your photos.** Only share them with people you'd show the photos to.
+
